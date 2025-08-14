@@ -8,6 +8,7 @@ import { isServer } from 'solid-js/web'
 
 interface StoreState {
   mode: Mode
+  apiKeys: Record<string, string>
 }
 
 type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
@@ -17,7 +18,7 @@ const StoreContext = createContext<StoreContextType>()
 export function UIStoreProvider(props: ParentProps) {
   const storage = !isServer ? window.localStorage : undefined
 
-  const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system' })
+  const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system', apiKeys: {} })
   const [state, setState] = makePersisted([baseState, setBaseState], {
     name: 'ui',
     storage,
