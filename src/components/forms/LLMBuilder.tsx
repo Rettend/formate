@@ -18,7 +18,6 @@ export function LLMBuilder(props: { formId: string }) {
   const doTestStep = useAction(runTestStep)
 
   const providerOptions = createMemo(() => Object.keys(models))
-  // Guard against touching `window` on the server during import/SSR
   const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
   const storage = isBrowser ? window.localStorage : undefined
   const sync = isBrowser ? storageSync : undefined

@@ -16,7 +16,6 @@ type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
 const StoreContext = createContext<StoreContextType>()
 
 export function UIStoreProvider(props: ParentProps) {
-  // Use a runtime browser check to avoid touching `window` during server import
   const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
   const storage = isBrowser ? window.localStorage : undefined
 
