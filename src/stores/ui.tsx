@@ -28,9 +28,9 @@ export function UIStoreProvider(props: ParentProps) {
   })
 
   const apply = (mode: Mode) => {
-  if (isServer)
+    if (isServer)
       return
-  const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+    const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
     const dark = mode === 'dark' || (mode === 'system' && prefersDark)
     document.documentElement.classList.toggle('dark', dark)
   }

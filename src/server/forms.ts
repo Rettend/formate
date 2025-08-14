@@ -2,7 +2,6 @@ import { action, query } from '@solidjs/router'
 import { and, desc, eq, like } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
-import { planFormWithLLM, simulateTestRun, simulateTestStep } from '~/lib/ai/form-planner'
 import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 import { db } from './db'
@@ -236,6 +235,8 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   if (!form)
     throw new Error('Not found')
 
+  // Lazy import to keep non-essential code out of the default action bundle
+  const { planFormWithLLM } = await import('~/lib/ai/form-planner')
   const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature })
   const safePlan = formPlanSchema.parse(plan)
 
@@ -270,6 +271,7 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
     throw new Error('No plan applied yet')
 
   const plan = formPlanSchema.parse(form.settingsJson)
+  const { simulateTestRun } = await import('~/lib/ai/form-planner')
   const { transcript } = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps })
   const safeTranscript = testRunTranscriptSchema.parse(transcript)
 
@@ -310,6 +312,7 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
   if (input.index < 0 || input.index >= plan.fields.length)
     throw new Error('Index out of range')
 
+  const { simulateTestStep } = await import('~/lib/ai/form-planner')
   const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId })
   return { step, total: plan.fields.length }
 }, 'forms:testStep')
