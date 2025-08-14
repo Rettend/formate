@@ -2,6 +2,7 @@ import { A } from '@solidjs/router'
 import { Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { useAuth } from '~/lib/auth'
 import { useStore } from '~/stores/ui'
 
@@ -24,19 +25,53 @@ export function AppHeader() {
             fallback={(
               <div class="hidden items-center gap-2 sm:flex">
                 <Button variant="outline" size="sm" onClick={() => auth.signIn('github')}>
-                  Sign in
+                  <span class="i-ph:sign-in-bold" />
+                  <span>Sign in</span>
                 </Button>
               </div>
             )}
           >
-            <div class="flex items-center gap-2">
-              <span class="hidden text-xs text-muted-foreground sm:inline">
-                {auth.session().user?.name ?? 'Account'}
-              </span>
-              <Button variant="destructive" size="sm" class="h-8 px-3" onClick={() => auth.signOut()}>
-                Logout
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <button class="flex items-center gap-2 border rounded-md px-2 py-1.5 text-sm hover:bg-accent">
+                  <span class="i-ph:user-circle-duotone size-5" />
+                  <span class="hidden max-w-40 truncate text-left sm:inline">
+                    {auth.session().user?.name ?? 'Account'}
+                  </span>
+                  <span class="i-ph:caret-down-bold size-3 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent class="min-w-48">
+                <div class="px-2 py-1.5 text-xs text-muted-foreground">
+                  <div class="truncate text-foreground font-medium">{auth.session().user?.name ?? 'Account'}</div>
+                  <div class="truncate">{auth.session().user?.email}</div>
+                </div>
+                <DropdownMenuSeparator />
+                <A href="/dashboard" class="block">
+                  <DropdownMenuItem>
+                    <span class="i-ph:squares-four-duotone" />
+                    <span>Dashboard</span>
+                  </DropdownMenuItem>
+                </A>
+                <A href="/forms" class="block">
+                  <DropdownMenuItem>
+                    <span class="i-ph:files-duotone" />
+                    <span>Forms</span>
+                  </DropdownMenuItem>
+                </A>
+                <A href="/profile" class="block">
+                  <DropdownMenuItem>
+                    <span class="i-ph:user-circle-duotone" />
+                    <span>Profile</span>
+                  </DropdownMenuItem>
+                </A>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem class="text-destructive" onClick={() => auth.signOut()}>
+                  <span class="i-ph:sign-out-bold" />
+                  <span>Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </Show>
         </div>
       </div>

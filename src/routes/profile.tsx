@@ -14,7 +14,10 @@ export default function Profile() {
             <div class="text-sm">{auth.session().user?.name}</div>
             <div class="text-xs text-muted-foreground">{auth.session().user?.email}</div>
             <div class="pt-2">
-              <Button variant="destructive" size="sm" onClick={() => auth.signOut()}>Sign out</Button>
+              <Button variant="destructive" size="sm" onClick={() => auth.signOut()}>
+                <span class="i-ph:sign-out-bold" />
+                <span>Sign out</span>
+              </Button>
             </div>
           </div>
         </Show>

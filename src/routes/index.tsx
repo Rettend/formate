@@ -78,13 +78,9 @@ export default function Home() {
                   <h2 class="text-base font-semibold leading-none">{auth.session().user?.name}</h2>
                   <p class="break-all text-xs text-muted-foreground">{auth.session().user?.email}</p>
                 </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  class="h-8 px-3"
-                  onClick={() => auth.signOut()}
-                >
-                  Logout
+                <Button variant="destructive" size="sm" class="h-8 px-3" onClick={() => auth.signOut()}>
+                  <span class="i-ph:sign-out-bold" />
+                  <span>Logout</span>
                 </Button>
               </div>
 

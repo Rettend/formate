@@ -118,6 +118,24 @@ export const publishForm = action(async (input: { formId: string }) => {
   return updated
 }, 'forms:publish')
 
+export const unpublishForm = action(async (input: { formId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ status: 'draft', updatedAt: new Date() })
+    .where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+    .returning({ id: Forms.id, status: Forms.status })
+
+  if (!updated)
+    throw new Error('Not found')
+  return updated
+}, 'forms:unpublish')
+
 export const deleteForm = action(async (input: { formId: string }) => {
   'use server'
   const event = getRequestEvent()

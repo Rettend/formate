@@ -4,6 +4,12 @@ Goal: Always ship a runnable, click-through slice after each milestone. Start wi
 
 Note: **the key is to create something I can see and click fast, then we create everything that's needed for it to work under it, then we iterate and make it better**
 
+Format:
+
+- [ ] incomplete
+- [-] partially completed, note on why
+- [x] completed
+
 ## Milestone 1 — Roles + Minimal Forms + Hard‑coded Chat on `/r/:slug`
 
 - [ ] Database & Migrations (Turso via Drizzle)
@@ -20,13 +26,14 @@ Note: **the key is to create something I can see and click fast, then we create 
   - [ ] Ensure session includes `user.role`
   - [ ] Guards: `requireCreator`
 - [ ] Server Functions (`src/server/forms.ts`)
-  - [ ] `createForm({ title, description?, slug? })` — creator/admin
-  - [ ] `listForms(filters?)` — creator/admin (basic pagination optional)
-  - [ ] `publishForm({ formId })` / `unpublishForm({ formId })` — owner
+  - [x] `createForm({ title, description?, slug? })` — creator/admin
+  - [x] `listForms(filters?)` — creator/admin (basic pagination optional)
+  - [x] `publishForm({ formId })` — owner
+  - [x] `unpublishForm({ formId })` — owner
   - [ ] `getPublicFormBySlug({ slug })` — public (expose: id, title, description; respect `isPublic`)
 - [ ] UI (Creator)
-  - [ ] `/forms` — minimal list and “Create form”; publish toggle (use existing `Button`)
-  - [ ] Skip full builder; show title/description only for now
+  - [x] `/forms` — minimal list and “Create form”; quick actions (open, publish/unpublish, share, delete)
+  - [-] Skip full builder; show title/description only for now
 - [ ] UI (Respondent)
   - [ ] `/r/:slug` — fetch public form; render minimal chat
   - [ ] `sendMessage()` server action that returns a hard-coded single reply (no provider, no persistence)
@@ -88,6 +95,8 @@ Note: **the key is to create something I can see and click fast, then we create 
   - [ ] `listUsedInviteTokens()` — recent redeemed tokens
 - [ ] UI
   - [ ] `/invites` — simple issue/redeem; list used tokens
+  - [x] Page scaffold (placeholder)
+  - [ ] Issue/redeem actions
 - [ ] Stores
   - [ ] `InvitesStore`: state (`usedTokens`, `issuing`, `redeeming`, `error?`); actions (`listUsed`, `issue`, `redeem`)
 - [ ] Manual tests
@@ -96,16 +105,26 @@ Note: **the key is to create something I can see and click fast, then we create 
 ## Milestone 5 — Creator Console: Builder & Dashboard (Skeleton First)
 
 - [ ] Server Functions (`src/server/forms.ts`)
-  - [ ] `getForm({ formId })` — owner
+  - [x] `getForm({ formId })` — owner
   - [ ] `getFormCounters({ formId })` — owner
-  - [ ] `updateForm({ formId, patch })` — owner
-  - [ ] `deleteForm({ formId })` — owner
+  - [x] `updateForm({ formId, patch })` — owner
+  - [x] `deleteForm({ formId })` — owner
 - [ ] UI
-  - [ ] App Shell: `AppHeader` (brand, `ModeToggle`, avatar menu), role-aware routing
-  - [ ] `/dashboard` — summaries and recent items (skeleton + loads)
-  - [ ] `/forms/:id` — summary, publish toggle, share link
+  - [-] App Shell:
+    - [x] `AppHeader` with brand and `ModeToggle`
+    - [x] Navigation (`AppNav` + mobile)
+    - [x] Auth gating via `AppShell requireAuth`
+    - [x] Avatar dropdown (profile/dashboard/forms/Logout)
+    - [ ] Role-aware routing
+  - [x] `/dashboard` — summaries and recent items (skeleton)
+  - [-] `/forms/:id` — summary, publish toggle, share link
+    - [x] Summary (title/status)
+    - [x] Publish/Unpublish toggle
+    - [x] Share link (copies `/r/:id` for now)
   - [ ] `/forms/:id/edit` — builder skeleton (intent, question bank list, settings)
-  - [ ] `/profile` — linked accounts management
+  - [-] `/profile` — linked accounts management
+    - [x] Page scaffold (user info + sign out)
+    - [ ] Linked accounts management
 - [ ] Components (introduce as needed)
   - [ ] Domain: `FormCard`, `FormList`, `FormCreateDialog`, `PublishToggle`
 - [ ] Stores
@@ -131,7 +150,8 @@ Note: **the key is to create something I can see and click fast, then we create 
 
 - [ ] Performance
   - [ ] Use `createAsync` for page data; suspense boundaries per section
-  - [ ] Optimistic updates with background revalidation
+  - [-] Optimistic updates with background revalidation
+    - [x] Forms: publish/unpublish (list and detail) with optimistic status + spinner; revalidate after commit
   - [ ] `truncateHistory(messages, budget)` to cap prompt size
 - [ ] Observability
   - [ ] Structured logs per server function: `{ fn, userId, ok, ms, err? }`

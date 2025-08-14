@@ -1,12 +1,16 @@
-import { A, createAsync, revalidate, useAction } from '@solidjs/router'
+import { A, createAsync, revalidate, useAction, useSubmissions } from '@solidjs/router'
 import { createSignal, For, onCleanup } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
-import { deleteForm, listForms } from '~/server/forms'
+import { deleteForm, listForms, publishForm, unpublishForm } from '~/server/forms'
 
 export default function FormsList() {
   const forms = createAsync(() => listForms({}))
   const remove = useAction(deleteForm)
+  const publish = useAction(publishForm)
+  const unpublish = useAction(unpublishForm)
+  const publishSubs = useSubmissions(publishForm)
+  const unpublishSubs = useSubmissions(unpublishForm)
   const [confirmingId, setConfirmingId] = createSignal<string | null>(null)
   const [confirmArmedAtMs, setConfirmArmedAtMs] = createSignal<number>(0)
   let confirmTimer: number | undefined
@@ -32,6 +36,63 @@ export default function FormsList() {
 
   onCleanup(() => clearTimeout(confirmTimer))
 
+  const handlePublishToggle = async (id: string, status: string) => {
+    if (status === 'published')
+      await unpublish({ formId: id })
+    else
+      await publish({ formId: id })
+    await revalidate([listForms.key])
+  }
+
+  const handleShare = async (id: string) => {
+    const base = typeof window !== 'undefined' ? window.location.origin : ''
+    // Temporary: share-by-id until slug/public route exists
+    const url = `${base}/r/${id}`
+    try {
+      await navigator.clipboard.writeText(url)
+    }
+    catch {
+      // noop
+    }
+  }
+
+  const getInputFormId = (input: unknown): string | undefined => {
+    const arg: any = Array.isArray(input) ? input[0] : input
+    if (!arg)
+      return undefined
+    if (typeof arg === 'string')
+      return arg
+    return arg.formId
+  }
+
+  const isPublishing = (id: string) => {
+    for (const sub of publishSubs.values()) {
+      if (!sub.pending)
+        continue
+      if (getInputFormId(sub.input) === id)
+        return true
+    }
+    return false
+  }
+
+  const isUnpublishing = (id: string) => {
+    for (const sub of unpublishSubs.values()) {
+      if (!sub.pending)
+        continue
+      if (getInputFormId(sub.input) === id)
+        return true
+    }
+    return false
+  }
+
+  const optimisticStatus = (id: string, base: string) => {
+    if (isPublishing(id))
+      return 'published'
+    if (isUnpublishing(id))
+      return 'draft'
+    return base
+  }
+
   return (
     <AppShell requireAuth>
       <section>
@@ -56,7 +117,7 @@ export default function FormsList() {
                   {/* Left: title/status clickable */}
                   <A href={`/forms/${item.id}`} class="min-w-0 flex-1">
                     <p class="truncate font-medium">{item.title}</p>
-                    <p class="text-xs text-muted-foreground">{item.status}</p>
+                    <p class="text-xs text-muted-foreground">{optimisticStatus(item.id, item.status)}</p>
                   </A>
 
                   {/* Right: quick actions */}
@@ -72,6 +133,29 @@ export default function FormsList() {
                         <span class="i-ph:caret-right-bold size-4" />
                       </Button>
                     </A>
+                    {/* Publish/Unpublish */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
+                      title={optimisticStatus(item.id, item.status) === 'published' ? 'Unpublish' : 'Publish'}
+                      aria-label={optimisticStatus(item.id, item.status) === 'published' ? 'Unpublish' : 'Publish'}
+                      disabled={isPublishing(item.id) || isUnpublishing(item.id)}
+                      onClick={() => handlePublishToggle(item.id, optimisticStatus(item.id, item.status))}
+                    >
+                      <span class={isPublishing(item.id) || isUnpublishing(item.id) ? 'i-svg-spinners:180-ring size-4' : (optimisticStatus(item.id, item.status) === 'published' ? 'i-ph:cloud-slash-bold size-4' : 'i-ph:cloud-arrow-up-bold size-4')} />
+                    </Button>
+                    {/* Share */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
+                      title="Copy share link"
+                      aria-label="Copy share link"
+                      onClick={() => handleShare(item.id)}
+                    >
+                      <span class="i-ph:link-bold size-4" />
+                    </Button>
                     {/* Delete */}
                     <Button
                       variant="ghost"
