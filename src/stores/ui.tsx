@@ -16,19 +16,21 @@ type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
 const StoreContext = createContext<StoreContextType>()
 
 export function UIStoreProvider(props: ParentProps) {
-  const storage = !isServer ? window.localStorage : undefined
+  // Use a runtime browser check to avoid touching `window` during server import
+  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
+  const storage = isBrowser ? window.localStorage : undefined
 
   const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system', apiKeys: {} })
   const [state, setState] = makePersisted([baseState, setBaseState], {
     name: 'ui',
     storage,
-    sync: !isServer ? storageSync : undefined,
+    sync: isBrowser ? storageSync : undefined,
   })
 
   const apply = (mode: Mode) => {
-    if (isServer)
+  if (isServer)
       return
-    const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+  const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
     const dark = mode === 'dark' || (mode === 'system' && prefersDark)
     document.documentElement.classList.toggle('dark', dark)
   }

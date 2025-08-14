@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vinxi dev",
     "build": "bun --bun vinxi build",
-    "preview": "vinxi start",
+    "preview": "wrangler dev",
     "check": "tsc --noEmit --skipLibCheck",
     "lint": "eslint . --fix",
     "update:deps": "taze latest -wr",

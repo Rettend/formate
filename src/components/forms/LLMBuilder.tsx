@@ -19,8 +19,10 @@ export function LLMBuilder(props: { formId: string }) {
   const doTestStep = useAction(runTestStep)
 
   const providerOptions = createMemo(() => Object.keys(models))
-  const storage = !isServer ? window.localStorage : undefined
-  const sync = !isServer ? storageSync : undefined
+  // Guard against touching `window` on the server during import/SSR
+  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
+  const storage = isBrowser ? window.localStorage : undefined
+  const sync = isBrowser ? storageSync : undefined
   const [llmProviderRaw, setLlmProviderRaw] = createSignal<string | null>(null)
   const [llmProvider, setLlmProvider] = makePersisted(untrack(() => [llmProviderRaw, setLlmProviderRaw] as const), {
     name: 'llm:provider',
