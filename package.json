@@ -1,0 +1,58 @@
+{
+  "name": "formate-app",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "bun@1.2.20",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "bun --bun vinxi build",
+    "preview": "vinxi start",
+    "check": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint . --fix",
+    "update:deps": "taze latest -wr",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@kobalte/core": "^0.13.11",
+    "@libsql/client": "^0.15.10",
+    "@rttnd/gau": "^0.3.4",
+    "@solid-primitives/storage": "^4.3.3",
+    "@solidjs/router": "^0.15.3",
+    "@solidjs/start": "^1.1.7",
+    "@unocss/reset": "^66.4.2",
+    "class-variance-authority": "^0.7.1",
+    "drizzle-orm": "^0.44.4",
+    "solid-js": "^1.9.8",
+    "tailwindcss-animate": "^1.0.7",
+    "unocss": "^66.4.2",
+    "uuid": "^11.1.0",
+    "vinxi": "^0.5.8"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^5.2.1",
+    "@fontsource-variable/league-spartan": "^5.2.6",
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/ph": "^1.2.2",
+    "@types/node": "^24.2.1",
+    "@unocss/eslint-plugin": "^66.4.2",
+    "@unocss/preset-icons": "^66.4.2",
+    "clsx": "^2.1.1",
+    "drizzle-kit": "^0.31.4",
+    "eslint": "^9.33.0",
+    "eslint-plugin-format": "^1.0.1",
+    "eslint-plugin-solid": "^0.14.5",
+    "tailwind-merge": "^3.3.1",
+    "taze": "^19.1.0",
+    "unocss-preset-animations": "^1.2.1",
+    "unocss-preset-shadcn": "^0.5.0",
+    "zod": "^4.0.17"
+  },
+  "trustedDependencies": [
+    "@parcel/watcher"
+  ]
+}

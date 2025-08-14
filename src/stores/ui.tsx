@@ -1,0 +1,60 @@
+import type { ParentProps } from 'solid-js'
+import type { SetStoreFunction, Store } from 'solid-js/store'
+import type { Mode } from '~/lib/constants'
+import { makePersisted, storageSync } from '@solid-primitives/storage'
+import { createContext, createEffect, onCleanup, onMount, useContext } from 'solid-js'
+import { createStore } from 'solid-js/store'
+import { isServer } from 'solid-js/web'
+
+interface StoreState {
+  mode: Mode
+}
+
+type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
+
+const StoreContext = createContext<StoreContextType>()
+
+export function StoreProvider(props: ParentProps) {
+  const storage = !isServer ? window.localStorage : undefined
+
+  const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system' })
+  const [state, setState] = makePersisted([baseState, setBaseState], {
+    name: 'ui',
+    storage,
+    sync: !isServer ? storageSync : undefined,
+  })
+
+  const apply = (mode: Mode) => {
+    if (isServer)
+      return
+    const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+    const dark = mode === 'dark' || (mode === 'system' && prefersDark)
+    document.documentElement.classList.toggle('dark', dark)
+  }
+
+  createEffect(() => apply(state.mode))
+
+  const handleChange = () => {
+    if (state.mode === 'system')
+      apply('system')
+  }
+
+  onMount(() => {
+    const media = matchMedia('(prefers-color-scheme: dark)')
+    media.addEventListener('change', handleChange)
+    onCleanup(() => media.removeEventListener('change', handleChange))
+  })
+
+  return (
+    <StoreContext.Provider value={[state, setState]}>
+      {props.children}
+    </StoreContext.Provider>
+  )
+}
+
+export function useStore() {
+  const context = useContext(StoreContext)
+  if (!context)
+    throw new Error('useStore must be used within a StoreProvider')
+  return context
+}
