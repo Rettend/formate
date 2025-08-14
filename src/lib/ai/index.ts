@@ -1,44 +1,47 @@
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+import type { ModelMessage } from 'ai'
+import { google } from '@ai-sdk/google'
+import { generateObject, streamObject, streamText } from 'ai'
 
-export interface StreamResult {
-  stream: ReadableStream<string>
-  finalText: Promise<string>
-}
+export { google, streamText }
+export type { ModelMessage }
 
-export interface AIProvider {
-  streamAIReply: (input: { messages: ChatMessage[], signal?: AbortSignal }) => StreamResult
-}
-
-// Placeholder implementation; will be replaced with Vercel AI SDK (v5) using Google provider
-export class NoopAI implements AIProvider {
-  streamAIReply({ messages }: { messages: ChatMessage[] }): StreamResult {
-    const last = messages.filter(m => m.role === 'user').at(-1)?.content ?? ''
-    const reply = `Thanks for your message: ${last}`
-    const stream = new ReadableStream<string>({
-      start(controller) {
-        // Trivial chunking
-        const chunks = reply.match(/.{1,12}/g) ?? [reply]
-        let i = 0
-        const tick = () => {
-          if (i < chunks.length) {
-            controller.enqueue(chunks[i++])
-            setTimeout(tick, 60)
-          }
-          else {
-            controller.close()
-          }
-        }
-        setTimeout(tick, 60)
-      },
-    })
-    return { stream, finalText: Promise.resolve(reply) }
+export function getProvider(provider: string, id: string) {
+  switch (provider) {
+    case 'google':
+      return google(id)
+    default:
+      throw new Error(`Unknown provider: ${provider}`)
   }
 }
 
-export function getAI(): AIProvider {
-  // Swap to a Vercel AI SDK backed provider when API keys present
-  return new NoopAI()
+export async function streamChatText(options: {
+  messages: ModelMessage[]
+  provider: string
+  modelId: string
+  abortSignal?: AbortSignal
+}) {
+  const model = getProvider(options.provider, options.modelId)
+  return streamText({ model, messages: options.messages, abortSignal: options.abortSignal })
+}
+
+export async function generateStructured(options: {
+  schema: any
+  messages: ModelMessage[]
+  provider: string
+  modelId: string
+  providerOptions?: any
+}) {
+  const model = getProvider(options.provider, options.modelId)
+  return generateObject({ model, schema: options.schema, messages: options.messages, providerOptions: options.providerOptions })
+}
+
+export function streamStructured(options: {
+  schema: any
+  messages: ModelMessage[]
+  provider: string
+  modelId: string
+  providerOptions?: any
+}) {
+  const model = getProvider(options.provider, options.modelId)
+  return streamObject({ model, schema: options.schema, messages: options.messages, providerOptions: options.providerOptions })
 }

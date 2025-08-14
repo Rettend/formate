@@ -1,6 +1,7 @@
 import { createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
 import { createEffect, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
+import { LLMBuilder } from '~/components/forms/LLMBuilder'
 import { Button } from '~/components/ui/button'
 import { deleteForm, getForm, publishForm, unpublishForm } from '~/server/forms'
 
@@ -35,9 +36,7 @@ export default function FormDetail() {
     try {
       await navigator.clipboard.writeText(url)
     }
-    catch {
-      // noop
-    }
+    catch {}
   }
 
   const getInputFormId = (input: unknown): string | undefined => {
@@ -75,18 +74,14 @@ export default function FormDetail() {
           </div>
           <div class="flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={isPublishing() || isUnpublishing()} onClick={handleTogglePublish}>
-              <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring animate-spin' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
+              <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
               <span>{optimisticStatus() === 'published' ? 'Unpublish' : 'Publish'}</span>
             </Button>
-            <Button size="sm" variant="secondary" onClick={handleShare}>
+            <Button size="sm" variant="outline" onClick={handleShare}>
               <span class="i-ph:link-bold" />
               <span>Share link</span>
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleDelete}
-            >
+            <Button size="sm" variant="destructive" onClick={handleDelete}>
               <span class="i-ph:trash-bold" />
               <span>Delete</span>
             </Button>
@@ -96,7 +91,7 @@ export default function FormDetail() {
         <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
           <Show when={form()} fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
             <p class="text-sm text-muted-foreground">Status: {optimisticStatus() ?? '—'}</p>
-            <p class="mt-2 text-sm text-muted-foreground">Form details and builder will go here.</p>
+            <LLMBuilder formId={id()} />
           </Show>
         </div>
       </section>

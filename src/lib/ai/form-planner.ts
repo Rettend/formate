@@ -1,0 +1,94 @@
+import type { ModelMessage } from '~/lib/ai'
+import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
+import { z } from 'zod'
+import { generateStructured } from '~/lib/ai'
+import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
+
+const SYSTEM_INSTRUCTIONS = `You are an expert survey/form designer.
+Design concise, high-completion forms. Use clear, neutral, and inclusive language.
+Follow constraints strictly. Return only the required JSON object and no extra text.`
+
+function buildPlanningMessages(prompt: string): ModelMessage[] {
+  return [
+    { role: 'system', content: SYSTEM_INSTRUCTIONS },
+    {
+      role: 'user',
+      content: `Goal & constraints (single prompt):\n${prompt}\n\nOutput a JSON object matching the provided schema strictly. Do not include any commentary.`,
+    },
+  ]
+}
+
+export async function planFormWithLLM(options: {
+  prompt: string
+  provider: string
+  modelId: string
+  temperature?: number
+}): Promise<{ plan: FormPlan, tokensIn?: number, tokensOut?: number }> {
+  const { object } = await generateStructured({
+    schema: formPlanSchema,
+    messages: buildPlanningMessages(options.prompt),
+    provider: options.provider,
+    modelId: options.modelId,
+    providerOptions: { temperature: typeof options.temperature === 'number' ? options.temperature : 0.5 },
+  })
+  return { plan: object as FormPlan }
+}
+
+export async function simulateTestRun(options: {
+  plan: FormPlan
+  provider: string
+  modelId: string
+  maxSteps?: number
+  signal?: AbortSignal
+}): Promise<{ transcript: TestRunStep[], tokensIn?: number, tokensOut?: number }> {
+  const steps: TestRunStep[] = []
+  const max = Math.min(options.maxSteps ?? options.plan.fields.length, options.plan.fields.length)
+
+  for (let i = 0; i < max; i++) {
+    const f = options.plan.fields[i]
+    const q = `${f.label}${f.required ? ' (required)' : ''}`
+    const answerSchema = z.object({ answer: z.union([z.string(), z.number(), z.boolean()]) })
+    const { object } = await generateStructured({
+      schema: answerSchema,
+      provider: options.provider,
+      modelId: options.modelId,
+      messages: [
+        { role: 'system', content: 'Answer concisely as a realistic respondent. No preface, only the answer. Return only JSON.' },
+        { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
+      ],
+      providerOptions: { temperature: 0.5 },
+    })
+    steps.push({ step: i + 1, question: f, answer: (object as any).answer })
+  }
+
+  // Validate before returning
+  // TODO: AI SDK already validates input and output -> delete
+  const transcript = testRunTranscriptSchema.parse(steps)
+  return { transcript }
+}
+
+export async function simulateTestStep(options: {
+  plan: FormPlan
+  index: number
+  provider: string
+  modelId: string
+}): Promise<TestRunStep> {
+  const i = options.index
+  if (i < 0 || i >= options.plan.fields.length)
+    throw new Error('Index out of range')
+  const f: FormField = options.plan.fields[i]
+  const q = `${f.label}${f.required ? ' (required)' : ''}`
+  const answerSchema = z.object({ answer: z.union([z.string(), z.number(), z.boolean()]) })
+  const { object } = await generateStructured({
+    schema: answerSchema,
+    provider: options.provider,
+    modelId: options.modelId,
+    messages: [
+      { role: 'system', content: 'You are role-playing as a survey respondent.' },
+      { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
+    ],
+    providerOptions: { temperature: 0.5 },
+  })
+  const step: TestRunStep = { step: i + 1, question: f, answer: (object as any).answer }
+  return step
+}

@@ -1,3 +1,4 @@
+import type { FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { uuidV7Base64url } from '~/lib/index'
 
@@ -41,6 +42,10 @@ export const Forms = sqliteTable('forms', {
   ownerUserId: text().notNull().references(() => Users.id, { onDelete: 'cascade' }),
   title: text().notNull(),
   description: text(),
+  // JSON configuration used by the LLM builder
+  aiConfigJson: text({ mode: 'json' }).$type<{ prompt: string, provider: string, modelId: string }>(),
+  // JSON accepted plan/definition for the form
+  settingsJson: text({ mode: 'json' }).$type<FormPlan>(),
   status: text().notNull().default('draft'),
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -48,3 +53,20 @@ export const Forms = sqliteTable('forms', {
 
 export type Form = typeof Forms.$inferSelect
 export type FormNew = typeof Forms.$inferInsert
+
+export const FormTestRuns = sqliteTable('form_test_runs', {
+  id: text().primaryKey().$defaultFn(() => uuidV7Base64url()),
+  formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
+  createdByUserId: text().notNull().references(() => Users.id, { onDelete: 'cascade' }),
+  prompt: text().notNull(),
+  provider: text().notNull().default('google'),
+  modelId: text().notNull(),
+  transcriptJson: text({ mode: 'json' }).$type<TestRunStep[]>().notNull(),
+  tokensIn: integer().default(0),
+  tokensOut: integer().default(0),
+  latencyMs: integer().default(0),
+  createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+})
+
+export type FormTestRun = typeof FormTestRuns.$inferSelect
+export type FormTestRunNew = typeof FormTestRuns.$inferInsert

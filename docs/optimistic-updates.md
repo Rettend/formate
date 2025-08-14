@@ -95,7 +95,7 @@ export default function ItemsList() {
               >
                 <span class={
                   isPublishing(item.id) || isUnpublishing(item.id)
-                    ? 'i-svg-spinners:180-ring animate-spin'
+                    ? 'i-svg-spinners:180-ring'
                     : optimisticStatus(item.id, item.status) === 'published'
                       ? 'i-ph:cloud-slash-bold'
                       : 'i-ph:cloud-arrow-up-bold'
@@ -170,7 +170,7 @@ export default function ItemDetail() {
         disabled={isPublishing() || isUnpublishing()}
         onClick={handleToggle}
       >
-        <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring animate-spin' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
+        <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
         <span>{optimisticStatus() === 'published' ? 'Unpublish' : 'Publish'}</span>
       </Button>
       <span class="text-xs text-muted-foreground">Status: {optimisticStatus()}</span>

@@ -18,13 +18,16 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@ai-sdk/google": "^2.0.6",
     "@kobalte/core": "^0.13.11",
     "@libsql/client": "^0.15.10",
     "@rttnd/gau": "^0.3.4",
+    "@solid-primitives/memo": "^1.4.3",
     "@solid-primitives/storage": "^4.3.3",
     "@solidjs/router": "^0.15.3",
     "@solidjs/start": "^1.1.7",
     "@unocss/reset": "^66.4.2",
+    "ai": "^5.0.14",
     "class-variance-authority": "^0.7.1",
     "drizzle-orm": "^0.44.4",
     "solid-js": "^1.9.8",

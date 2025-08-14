@@ -160,7 +160,7 @@ export default function FormsList() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      class="pointer-events-none text-destructive/90 opacity-0 transition-colors duration-150 group-focus-within:pointer-events-auto group-hover:pointer-events-auto hover:bg-transparent focus:text-destructive hover:text-destructive group-focus-within:opacity-100 group-hover:opacity-100"
+                      class="pointer-events-none text-destructive/90 opacity-0 transition-all duration-150 group-focus-within:pointer-events-auto group-hover:pointer-events-auto hover:bg-transparent focus:text-destructive hover:text-destructive group-focus-within:opacity-100 group-hover:opacity-100"
                       title={confirmingId() === item.id ? 'Click to confirm delete' : 'Delete'}
                       aria-label={confirmingId() === item.id ? 'Confirm delete' : 'Delete'}
                       onClick={() => handleDelete(item.id)}

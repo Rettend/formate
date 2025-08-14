@@ -35,6 +35,7 @@ export default defineConfig({
         base: 'blue',
         name: 'tealFusion',
         light: {
+          'card': '210 40% 98.6%',
           'primary': '190 90% 40%',
           'primary-foreground': '0 0% 98%',
           'destructive': '0 84.2% 60.2%',
@@ -46,6 +47,7 @@ export default defineConfig({
           'chart-5': '160 45% 46%',
         },
         dark: {
+          'card': '217.2 32.6% 10.5%',
           'primary': '190 85% 48%',
           'primary-foreground': '210 40% 98%',
           'accent-foreground': '210 40% 98%',
