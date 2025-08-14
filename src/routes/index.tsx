@@ -4,10 +4,10 @@ import { createMemo, For, Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import { useAuth } from '~/lib/auth'
-import { useStore } from '~/stores/ui'
+import { useUIStore } from '~/stores/ui'
 
 export default function Home() {
-  const [state, setState] = useStore()
+  const [state, setState] = useUIStore()
   const auth = useAuth()
 
   const linkedProviders = createMemo<Provider[]>(() => {

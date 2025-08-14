@@ -1,6 +1,8 @@
 import { action, query } from '@solidjs/router'
 import { and, desc, eq, like } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
+import { z } from 'zod'
+import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { db } from './db'
 import { Forms } from './db/schema'
 
@@ -18,12 +20,21 @@ export interface ListFormsOutputItem {
   updatedAt: Date
 }
 
-export const listForms = query(async (input: ListFormsInput = {}) => {
+const listFormsSchema = z.object({
+  page: paginationSchema.shape.page.optional(),
+  pageSize: paginationSchema.shape.pageSize.optional(),
+  q: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+})
+
+export const listForms = query(async (raw: ListFormsInput = {}) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(listFormsSchema, raw, 'forms:list')
 
   const page = Math.max(1, input.page ?? 1)
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 50))
@@ -32,8 +43,8 @@ export const listForms = query(async (input: ListFormsInput = {}) => {
   const conditions = [eq(Forms.ownerUserId, session.user.id)] as any[]
   if (input.status)
     conditions.push(eq(Forms.status, input.status))
-  if (input.q && input.q.trim().length > 0)
-    conditions.push(like(Forms.title, `%${input.q.trim()}%`))
+  if (input.q && input.q.length > 0)
+    conditions.push(like(Forms.title, `%${input.q}%`))
 
   const items = await db
     .select({ id: Forms.id, title: Forms.title, status: Forms.status, updatedAt: Forms.updatedAt })
@@ -46,24 +57,35 @@ export const listForms = query(async (input: ListFormsInput = {}) => {
   return { items, page, pageSize }
 }, 'forms:list')
 
-export const getForm = query(async (input: { formId: string }) => {
+const getFormSchema = z.object({ formId: idSchema })
+
+export const getForm = query(async (raw: { formId: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(getFormSchema, raw, 'forms:get')
 
   const rows = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   const form = rows[0]
   return form ?? null
 }, 'forms:get')
 
-export const createForm = action(async (input: { title?: string, description?: string }) => {
+const createFormSchema = z.object({
+  title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+  description: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+})
+
+export const createForm = action(async (raw: { title?: string, description?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(createFormSchema, raw, 'forms:create')
 
   const [created] = await db.insert(Forms).values({
     ownerUserId: session.user.id,
@@ -74,14 +96,22 @@ export const createForm = action(async (input: { title?: string, description?: s
   return created
 }, 'forms:create')
 
-export const updateForm = action(async (input: { formId: string, patch: { title?: string, description?: string } }) => {
+const updateFormSchema = z.object({
+  formId: idSchema,
+  patch: z.object({
+    title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+    description: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+  }),
+})
+
+export const updateForm = action(async (raw: { formId: string, patch: { title?: string, description?: string } }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
 
-  const { formId, patch } = input
+  const { formId, patch } = safeParseOrThrow(updateFormSchema, raw, 'forms:update')
   const updates: Partial<typeof Forms.$inferInsert> = {}
   if (typeof patch.title === 'string')
     updates.title = patch.title.trim()
@@ -100,12 +130,16 @@ export const updateForm = action(async (input: { formId: string, patch: { title?
   return updated
 }, 'forms:update')
 
-export const publishForm = action(async (input: { formId: string }) => {
+const formIdOnlySchema = z.object({ formId: idSchema })
+
+export const publishForm = action(async (raw: { formId: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:publish')
 
   const [updated] = await db
     .update(Forms)
@@ -118,12 +152,14 @@ export const publishForm = action(async (input: { formId: string }) => {
   return updated
 }, 'forms:publish')
 
-export const unpublishForm = action(async (input: { formId: string }) => {
+export const unpublishForm = action(async (raw: { formId: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:unpublish')
 
   const [updated] = await db
     .update(Forms)
@@ -136,12 +172,14 @@ export const unpublishForm = action(async (input: { formId: string }) => {
   return updated
 }, 'forms:unpublish')
 
-export const deleteForm = action(async (input: { formId: string }) => {
+export const deleteForm = action(async (raw: { formId: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
     throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:delete')
 
   const deleted = await db
     .delete(Forms)

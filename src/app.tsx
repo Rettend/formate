@@ -3,7 +3,7 @@ import { AuthProvider } from '@rttnd/gau/client/solid'
 import { Router } from '@solidjs/router'
 import { FileRoutes } from '@solidjs/start/router'
 import { Suspense } from 'solid-js'
-import { StoreProvider } from '~/stores/ui'
+import { RootProviders } from '~/stores/root'
 import { clientEnv } from './env/client'
 import '@fontsource-variable/league-spartan'
 import '@unocss/reset/tailwind.css'
@@ -15,9 +15,9 @@ export default function App() {
       <Router
         root={props => (
           <>
-            <StoreProvider>
+            <RootProviders>
               <Suspense>{props.children}</Suspense>
-            </StoreProvider>
+            </RootProviders>
           </>
         )}
       >

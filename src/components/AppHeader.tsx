@@ -4,10 +4,10 @@ import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { useAuth } from '~/lib/auth'
-import { useStore } from '~/stores/ui'
+import { useUIStore } from '~/stores/ui'
 
 export function AppHeader() {
-  const [_, setState] = useStore()
+  const [_, setState] = useUIStore()
   const auth = useAuth()
 
   return (

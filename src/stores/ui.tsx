@@ -14,7 +14,7 @@ type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
 
 const StoreContext = createContext<StoreContextType>()
 
-export function StoreProvider(props: ParentProps) {
+export function UIStoreProvider(props: ParentProps) {
   const storage = !isServer ? window.localStorage : undefined
 
   const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system' })
@@ -52,9 +52,9 @@ export function StoreProvider(props: ParentProps) {
   )
 }
 
-export function useStore() {
+export function useUIStore() {
   const context = useContext(StoreContext)
   if (!context)
-    throw new Error('useStore must be used within a StoreProvider')
+    throw new Error('useUIStore must be used within a UIStoreProvider')
   return context
 }

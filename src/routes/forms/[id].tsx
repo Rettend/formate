@@ -75,7 +75,7 @@ export default function FormDetail() {
           </div>
           <div class="flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={isPublishing() || isUnpublishing()} onClick={handleTogglePublish}>
-              <span class={(isPublishing() || isUnpublishing()) ? 'i-ph:spinner-gap-bold animate-spin' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
+              <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring animate-spin' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
               <span>{optimisticStatus() === 'published' ? 'Unpublish' : 'Publish'}</span>
             </Button>
             <Button size="sm" variant="secondary" onClick={handleShare}>

@@ -37,6 +37,7 @@ export default defineConfig({
         light: {
           'primary': '190 90% 40%',
           'primary-foreground': '0 0% 98%',
+          'destructive': '0 84.2% 60.2%',
           'ring': '190 92% 42%',
           'chart-1': '190 90% 40%',
           'chart-2': '200 85% 50%',
@@ -48,6 +49,7 @@ export default defineConfig({
           'primary': '190 85% 48%',
           'primary-foreground': '210 40% 98%',
           'accent-foreground': '210 40% 98%',
+          'destructive': '0 82.8% 60.6%',
           'ring': '190 88% 46%',
           'chart-1': '190 85% 48%',
           'chart-2': '200 80% 60%',
