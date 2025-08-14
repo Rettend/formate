@@ -23,12 +23,14 @@ export async function planFormWithLLM(options: {
   provider: string
   modelId: string
   temperature?: number
+  apiKey?: string
 }): Promise<{ plan: FormPlan, tokensIn?: number, tokensOut?: number }> {
   const { object } = await generateStructured({
     schema: formPlanSchema,
     messages: buildPlanningMessages(options.prompt),
     provider: options.provider,
     modelId: options.modelId,
+    apiKey: options.apiKey,
     providerOptions: { temperature: typeof options.temperature === 'number' ? options.temperature : 0.5 },
   })
   return { plan: object as FormPlan }
@@ -40,6 +42,7 @@ export async function simulateTestRun(options: {
   modelId: string
   maxSteps?: number
   signal?: AbortSignal
+  apiKey?: string
 }): Promise<{ transcript: TestRunStep[], tokensIn?: number, tokensOut?: number }> {
   const steps: TestRunStep[] = []
   const max = Math.min(options.maxSteps ?? options.plan.fields.length, options.plan.fields.length)
@@ -52,6 +55,7 @@ export async function simulateTestRun(options: {
       schema: answerSchema,
       provider: options.provider,
       modelId: options.modelId,
+      apiKey: options.apiKey,
       messages: [
         { role: 'system', content: 'Answer concisely as a realistic respondent. No preface, only the answer. Return only JSON.' },
         { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
@@ -72,6 +76,7 @@ export async function simulateTestStep(options: {
   index: number
   provider: string
   modelId: string
+  apiKey?: string
 }): Promise<TestRunStep> {
   const i = options.index
   if (i < 0 || i >= options.plan.fields.length)
@@ -83,6 +88,7 @@ export async function simulateTestStep(options: {
     schema: answerSchema,
     provider: options.provider,
     modelId: options.modelId,
+    apiKey: options.apiKey,
     messages: [
       { role: 'system', content: 'You are role-playing as a survey respondent.' },
       { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },

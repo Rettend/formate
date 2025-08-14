@@ -220,9 +220,10 @@ const planWithAISchema = z.object({
   provider: z.string(),
   modelId: z.string(),
   temperature: z.coerce.number().min(0).max(2).optional(),
+  apiKey: z.string().optional(),
 })
 
-export const planWithAI = action(async (raw: { formId: string, prompt: string, provider: string, modelId: string, temperature?: number }) => {
+export const planWithAI = action(async (raw: { formId: string, prompt: string, provider: string, modelId: string, temperature?: number, apiKey?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -237,7 +238,7 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
 
   // Lazy import to keep non-essential code out of the default action bundle
   const { planFormWithLLM } = await import('~/lib/ai/form-planner')
-  const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature })
+  const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
   const safePlan = formPlanSchema.parse(plan)
 
   const [updated] = await db
@@ -254,9 +255,10 @@ const testRunSchema = z.object({
   maxSteps: z.coerce.number().int().min(1).max(20).optional(),
   provider: z.string(),
   modelId: z.string(),
+  apiKey: z.string().optional(),
 })
 
-export const createTestRun = action(async (raw: { formId: string, maxSteps?: number, provider: string, modelId: string }) => {
+export const createTestRun = action(async (raw: { formId: string, maxSteps?: number, provider: string, modelId: string, apiKey?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -272,7 +274,7 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
 
   const plan = formPlanSchema.parse(form.settingsJson)
   const { simulateTestRun } = await import('~/lib/ai/form-planner')
-  const { transcript } = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps })
+  const { transcript } = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps, apiKey: input.apiKey })
   const safeTranscript = testRunTranscriptSchema.parse(transcript)
 
   const [created] = await db.insert(FormTestRuns).values({
@@ -292,9 +294,10 @@ const testStepSchema = z.object({
   index: z.coerce.number().int().min(0).max(100),
   provider: z.string(),
   modelId: z.string(),
+  apiKey: z.string().optional(),
 })
 
-export const runTestStep = action(async (raw: { formId: string, index: number, provider: string, modelId: string }) => {
+export const runTestStep = action(async (raw: { formId: string, index: number, provider: string, modelId: string, apiKey?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -313,6 +316,6 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
     throw new Error('Index out of range')
 
   const { simulateTestStep } = await import('~/lib/ai/form-planner')
-  const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId })
+  const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
   return { step, total: plan.fields.length }
 }, 'forms:testStep')

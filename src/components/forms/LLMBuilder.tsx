@@ -11,8 +11,11 @@ import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberField
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { getModelAlias, models } from '~/lib/ai/lists'
 import { createTestRun, getForm, planWithAI, runTestStep } from '~/server/forms'
+import { useUIStore } from '~/stores/ui'
+import { decryptApiKey } from '~/utils/crypto'
 
 export function LLMBuilder(props: { formId: string }) {
+  const [ui] = useUIStore()
   const doPlan = useAction(planWithAI)
   const doTestRun = useAction(createTestRun)
   const doTestStep = useAction(runTestStep)
@@ -62,7 +65,19 @@ export function LLMBuilder(props: { formId: string }) {
       return
     try {
       setPlanning(true)
-      const res = await doPlan({ formId: props.formId, prompt: prompt().trim(), provider: llmProvider()!, modelId: model()!, temperature: temperature() })
+      // Decrypt API key locally if available for the chosen provider
+      let apiKey: string | undefined
+      const provider = llmProvider()!
+      const enc = ui.apiKeys?.[provider]
+      if (enc) {
+        try {
+          apiKey = await decryptApiKey(enc)
+        }
+        catch {
+          apiKey = undefined
+        }
+      }
+      const res = await doPlan({ formId: props.formId, prompt: prompt().trim(), provider, modelId: model()!, temperature: temperature(), apiKey })
       if (res?.plan) {
         setLastPlan(res.plan as FormPlan)
         await revalidate([getForm.key])
@@ -78,7 +93,18 @@ export function LLMBuilder(props: { formId: string }) {
       return
     try {
       setTesting(true)
-      const res = await doTestRun({ formId: props.formId, provider: llmProvider()!, modelId: model()!, maxSteps: 5 })
+      let apiKey: string | undefined
+      const provider = llmProvider()!
+      const enc = ui.apiKeys?.[provider]
+      if (enc) {
+        try {
+          apiKey = await decryptApiKey(enc)
+        }
+        catch {
+          apiKey = undefined
+        }
+      }
+      const res = await doTestRun({ formId: props.formId, provider, modelId: model()!, maxSteps: 5, apiKey })
       setLastRunId(res?.run?.id ?? null)
     }
     finally {
@@ -97,7 +123,18 @@ export function LLMBuilder(props: { formId: string }) {
         break
       const idx = liveIndex()
       try {
-        const res = await doTestStep({ formId: props.formId, index: idx, provider: llmProvider()!, modelId: model()! })
+        let apiKey: string | undefined
+        const provider = llmProvider()!
+        const enc = ui.apiKeys?.[provider]
+        if (enc) {
+          try {
+            apiKey = await decryptApiKey(enc)
+          }
+          catch {
+            apiKey = undefined
+          }
+        }
+        const res = await doTestStep({ formId: props.formId, index: idx, provider, modelId: model()!, apiKey })
         if (res?.step) {
           setLiveTranscript(t => [...t, res.step as TestRunStep])
           setLiveIndex(idx + 1)
@@ -130,7 +167,18 @@ export function LLMBuilder(props: { formId: string }) {
         break
       const idx = liveIndex()
       try {
-        const res = await doTestStep({ formId: props.formId, index: idx, provider: llmProvider()!, modelId: model()! })
+        let apiKey: string | undefined
+        const provider = llmProvider()!
+        const enc = ui.apiKeys?.[provider]
+        if (enc) {
+          try {
+            apiKey = await decryptApiKey(enc)
+          }
+          catch {
+            apiKey = undefined
+          }
+        }
+        const res = await doTestStep({ formId: props.formId, index: idx, provider, modelId: model()!, apiKey })
         if (res?.step) {
           setLiveTranscript(t => [...t, res.step as TestRunStep])
           setLiveIndex(idx + 1)
