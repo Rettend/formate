@@ -108,6 +108,35 @@ export default defineConfig({
           .bg-primary-gradient:hover { opacity: 0.88; }
           .bg-primary-gradient:active { opacity: 0.82; transform: translateY(1px); }
 
+          /* Destructive red gradient to mirror primary gradient behavior */
+          .bg-destructive-gradient {
+            background: linear-gradient(
+              45deg,
+              hsl(0 78% 52%) 0%,
+              hsl(354 82% 56%) 45%,
+              hsl(348 84% 58%) 100%
+            );
+            box-shadow: 0 2px 10px -2px hsl(var(--destructive) / 0.35),
+                        0 4px 20px -4px hsl(var(--destructive) / 0.25);
+            text-shadow: 0 2px 4px hsl(var(--destructive-foreground) / 0.25);
+            color: hsl(var(--destructive-foreground));
+            transition: opacity .15s ease-in-out, transform .15s ease-in-out;
+          }
+
+          .dark .bg-destructive-gradient {
+            background: linear-gradient(
+              45deg,
+              hsl(0 82% 56%) 0%,
+              hsl(354 86% 60%) 40%,
+              hsl(348 88% 62%) 100%
+            );
+            box-shadow: 0 2px 12px -2px hsl(var(--destructive) / 0.4),
+                        0 6px 28px -6px hsl(var(--destructive) / 0.35);
+          }
+
+          .bg-destructive-gradient:hover { opacity: 0.9; }
+          .bg-destructive-gradient:active { opacity: 0.85; transform: translateY(1px); }
+
           ::-webkit-scrollbar {
             width: 12px;
           }

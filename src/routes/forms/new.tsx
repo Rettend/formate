@@ -68,7 +68,7 @@ export default function NewForm() {
           </Show>
 
           <div class="flex gap-2">
-            <Button variant="gradient" size="sm" disabled={submitting()} onClick={handleCreate}>
+            <Button variant="default" size="sm" disabled={submitting()} onClick={handleCreate}>
               <span class={submitting() ? 'i-svg-spinners:180-ring' : 'i-ph:plus-bold'} />
               <span>{submitting() ? 'Creating…' : 'Create'}</span>
             </Button>

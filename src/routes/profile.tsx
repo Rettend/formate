@@ -59,7 +59,7 @@ export default function Profile() {
 
             <div class="pt-2">
               <h2 class="text-sm font-semibold">API keys</h2>
-              <p class="mb-2 text-xs text-muted-foreground">Stored locally in your browser (encrypted with a key kept in localStorage). We never send these to our servers.</p>
+              <p class="mb-2 text-xs text-muted-foreground">Stored locally in your browser. We never send these to our servers.</p>
               <div class="space-y-3">
                 <For each={providers}>
                   {p => (

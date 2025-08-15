@@ -12,7 +12,7 @@ export default function Dashboard() {
             <p class="text-sm text-muted-foreground">Overview and quick actions</p>
           </div>
           <A href="/forms/new" class="inline-flex">
-            <Button variant="gradient" size="sm">Create form</Button>
+            <Button variant="default" size="sm">Create form</Button>
           </A>
         </div>
 

@@ -102,7 +102,7 @@ export default function FormsList() {
             <p class="text-sm text-muted-foreground">Manage your forms</p>
           </div>
           <A href="/forms/new" class="inline-flex">
-            <Button variant="gradient" size="sm">New form</Button>
+            <Button variant="default" size="sm">New form</Button>
           </A>
         </div>
 

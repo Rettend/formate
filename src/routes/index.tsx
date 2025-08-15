@@ -47,7 +47,7 @@ export default function Home() {
                 </div>
                 <div class="space-y-2">
                   <Button
-                    variant="gradient"
+                    variant="default"
                     size="sm"
                     class="w-full justify-start gap-3"
                     onClick={() => auth.signIn('github')}
