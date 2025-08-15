@@ -1,4 +1,4 @@
-import type { ModelConfigObject } from '~/lib/ai/lists'
+import type { ModelConfigObject, Provider } from '~/lib/ai/lists'
 import type { FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { createWritableMemo } from '@solid-primitives/memo'
 import { makePersisted, storageSync } from '@solid-primitives/storage'
@@ -9,13 +9,14 @@ import { Button } from '~/components/ui/button'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { getModelAlias, models } from '~/lib/ai/lists'
 import { createTestRun, getForm, planWithAI, runTestStep } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 import { decryptApiKey } from '~/utils/crypto'
 
 export function LLMBuilder(props: { formId: string }) {
-  const [ui] = useUIStore()
+  const { ui } = useUIStore()
   const doPlan = useAction(planWithAI)
   const doTestRun = useAction(createTestRun)
   const doTestStep = useAction(runTestStep)
@@ -24,8 +25,8 @@ export function LLMBuilder(props: { formId: string }) {
   const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
   const storage = isBrowser ? window.localStorage : undefined
   const sync = isBrowser ? storageSync : undefined
-  const [llmProviderRaw, setLlmProviderRaw] = createSignal<string | null>(null)
-  const [llmProvider, setLlmProvider] = makePersisted(untrack(() => [llmProviderRaw, setLlmProviderRaw] as const), {
+  const [llmProviderRaw, setLlmProviderRaw] = createSignal<Provider | null>(null)
+  const [llmProvider, setLlmProvider] = makePersisted(untrack(() => [llmProviderRaw, setLlmProviderRaw]), {
     name: 'llm:provider',
     storage,
     sync,
@@ -43,6 +44,8 @@ export function LLMBuilder(props: { formId: string }) {
   const [prompt, setPrompt] = makePersisted(untrack(() => [promptRaw, setPromptRaw]), { name: 'llm:prompt', storage, sync })
   const [planning, setPlanning] = createSignal(false)
   const [testing, setTesting] = createSignal(false)
+  const [planError, setPlanError] = createSignal<string | null>(null)
+  const [testError, setTestError] = createSignal<string | null>(null)
   const [lastPlan, setLastPlan] = createSignal<FormPlan | null>(null)
   const [lastRunId, setLastRunId] = createSignal<string | null>(null)
 
@@ -64,6 +67,7 @@ export function LLMBuilder(props: { formId: string }) {
     if (!canPlan())
       return
     try {
+      setPlanError(null)
       setPlanning(true)
       // Decrypt API key locally if available for the chosen provider
       let apiKey: string | undefined
@@ -83,6 +87,10 @@ export function LLMBuilder(props: { formId: string }) {
         await revalidate([getForm.key])
       }
     }
+    catch (err) {
+      logAIError(err, 'plan')
+      setPlanError(aiErrorToMessage(err))
+    }
     finally {
       setPlanning(false)
     }
@@ -92,6 +100,7 @@ export function LLMBuilder(props: { formId: string }) {
     if (!canTest())
       return
     try {
+      setTestError(null)
       setTesting(true)
       let apiKey: string | undefined
       const provider = llmProvider()!
@@ -107,12 +116,17 @@ export function LLMBuilder(props: { formId: string }) {
       const res = await doTestRun({ formId: props.formId, provider, modelId: model()!, maxSteps: 5, apiKey })
       setLastRunId(res?.run?.id ?? null)
     }
+    catch (err) {
+      logAIError(err, 'test-run')
+      setTestError(aiErrorToMessage(err))
+    }
     finally {
       setTesting(false)
     }
   }
 
   const startLive = async () => {
+    setTestError(null)
     setLiveTranscript([])
     setLiveIndex(0)
     setLiveTotal(null)
@@ -150,7 +164,9 @@ export function LLMBuilder(props: { formId: string }) {
           break
         }
       }
-      catch {
+      catch (err) {
+        logAIError(err, 'live-step')
+        setTestError(aiErrorToMessage(err))
         setLiveRunning(false)
         break
       }
@@ -194,7 +210,9 @@ export function LLMBuilder(props: { formId: string }) {
           break
         }
       }
-      catch {
+      catch (err) {
+        logAIError(err, 'live-step')
+        setTestError(aiErrorToMessage(err))
         setLiveRunning(false)
         break
       }
@@ -210,6 +228,11 @@ export function LLMBuilder(props: { formId: string }) {
       {/* Controls */}
       <div class="grid grid-cols-1 mt-6 gap-4 md:grid-cols-2">
         <div class="flex flex-col gap-3">
+          <Show when={planError()}>
+            <div class="border border-destructive/30 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive-foreground">
+              {planError()}
+            </div>
+          </Show>
           <div class="flex flex-col gap-2">
             <Label>Provider</Label>
             <Select
@@ -316,6 +339,11 @@ export function LLMBuilder(props: { formId: string }) {
               <span>Test run</span>
             </Button>
           </div>
+          <Show when={testError()}>
+            <div class="border border-destructive/30 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive-foreground">
+              {testError()}
+            </div>
+          </Show>
           <Show when={lastRunId()}>
             <p class="text-sm text-muted-foreground">Saved test run: {lastRunId()}</p>
           </Show>
@@ -360,6 +388,11 @@ export function LLMBuilder(props: { formId: string }) {
               <span>Stop</span>
             </Button>
           </div>
+          <Show when={testError()}>
+            <div class="mb-2 border border-destructive/30 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive-foreground">
+              {testError()}
+            </div>
+          </Show>
           <div class="mb-2 text-xs text-muted-foreground">
             <span>Status: {liveRunning() ? (livePaused() ? 'Paused' : 'Running') : (liveTranscript().length > 0 ? 'Stopped' : 'Idle')}</span>
             <span class="ml-3">Progress: {liveIndex()} / {liveTotal() ?? '—'}</span>

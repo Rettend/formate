@@ -3,7 +3,7 @@ import type { SetStoreFunction, Store } from 'solid-js/store'
 import type { Mode } from '~/lib/constants'
 import { makePersisted, storageSync } from '@solid-primitives/storage'
 import { createContext, createEffect, onCleanup, onMount, useContext } from 'solid-js'
-import { createStore } from 'solid-js/store'
+import { createStore, produce } from 'solid-js/store'
 import { isServer } from 'solid-js/web'
 
 interface StoreState {
@@ -12,6 +12,11 @@ interface StoreState {
 }
 
 type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
+
+interface UIStoreActions {
+  setApiKey: (provider: string, value: string) => void
+  deleteApiKey: (provider: string) => void
+}
 
 const StoreContext = createContext<StoreContextType>()
 
@@ -58,5 +63,23 @@ export function useUIStore() {
   const context = useContext(StoreContext)
   if (!context)
     throw new Error('useUIStore must be used within a UIStoreProvider')
-  return context
+
+  const [ui, setUI] = context
+
+  const actions: UIStoreActions = {
+    setApiKey(provider: string, value: string) {
+      setUI('apiKeys', provider, value)
+    },
+    deleteApiKey(provider: string) {
+      setUI('apiKeys', produce((apiKeys) => {
+        delete (apiKeys)[provider]
+      }))
+    },
+  }
+
+  return {
+    ui,
+    setUI,
+    actions,
+  }
 }

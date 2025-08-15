@@ -7,7 +7,7 @@ import { useAuth } from '~/lib/auth'
 import { useUIStore } from '~/stores/ui'
 
 export default function Home() {
-  const [state, setState] = useUIStore()
+  const { ui, setUI } = useUIStore()
   const auth = useAuth()
 
   const linkedProviders = createMemo<Provider[]>(() => {
@@ -27,9 +27,9 @@ export default function Home() {
           <span class="font-semibold tracking-tight">Formate</span>
         </div>
         <div class="flex items-center gap-2">
-          <ModeToggle set={mode => setState('mode', mode)} />
+          <ModeToggle set={mode => setUI('mode', mode)} />
           <span class="hidden rounded bg-muted px-2 py-1 text-xs font-medium sm:inline">
-            {state.mode.charAt(0).toUpperCase() + state.mode.slice(1)}
+            {ui.mode.charAt(0).toUpperCase() + ui.mode.slice(1)}
           </span>
         </div>
       </header>

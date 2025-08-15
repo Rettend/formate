@@ -7,7 +7,7 @@ import { useAuth } from '~/lib/auth'
 import { useUIStore } from '~/stores/ui'
 
 export function AppHeader() {
-  const [_, setState] = useUIStore()
+  const { setUI } = useUIStore()
   const auth = useAuth()
 
   return (
@@ -19,7 +19,7 @@ export function AppHeader() {
           </A>
         </div>
         <div class="flex items-center gap-2">
-          <ModeToggle set={mode => setState('mode', mode)} />
+          <ModeToggle set={mode => setUI('mode', mode)} />
           <Show
             when={auth.session().user}
             fallback={(

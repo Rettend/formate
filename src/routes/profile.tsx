@@ -1,25 +1,22 @@
 import { createSignal, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
+import { providers } from '~/lib/ai/lists'
 import { useAuth } from '~/lib/auth'
 import { useUIStore } from '~/stores/ui'
 import { encryptApiKey } from '~/utils/crypto'
 
 export default function Profile() {
   const auth = useAuth()
-  const [ui, setUI] = useUIStore()
+  const { ui, actions } = useUIStore()
   const [inputs, setInputs] = createSignal<Record<string, string>>({})
-
-  const providers = [
-    { id: 'google', title: 'Google', placeholder: 'Paste your Google Generative AI API key' },
-  ] as const
 
   async function saveKey(provider: string, raw: string) {
     if (!raw)
       return deleteKey(provider)
     try {
       const enc = await encryptApiKey(raw)
-      setUI('apiKeys', provider, enc)
+      actions.setApiKey(provider, enc)
       setInputs(prev => ({ ...prev, [provider]: '' }))
     }
     catch {
@@ -28,10 +25,7 @@ export default function Profile() {
   }
 
   function deleteKey(provider: string) {
-    setUI('apiKeys', (prev) => {
-      const { [provider]: _omit, ...rest } = prev || {}
-      return rest
-    })
+    actions.deleteApiKey(provider)
   }
   return (
     <AppShell requireAuth>
