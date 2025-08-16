@@ -1,5 +1,6 @@
 import { useAction, useNavigate } from '@solidjs/router'
-import { createSignal, Show } from 'solid-js'
+import { createSignal } from 'solid-js'
+import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 import { createForm } from '~/server/forms'
@@ -9,14 +10,12 @@ export default function NewForm() {
   const create = useAction(createForm)
   const [title, setTitle] = createSignal('')
   const [description, setDescription] = createSignal('')
-  const [error, setError] = createSignal<string | null>(null)
   const [submitting, setSubmitting] = createSignal(false)
 
   const handleCreate = async () => {
-    setError(null)
     const t = title().trim()
     if (t.length === 0) {
-      setError('Title is required')
+      toast.error('Title is required')
       return
     }
     try {
@@ -26,6 +25,10 @@ export default function NewForm() {
         navigate(`/forms/${created.id}`)
       else
         navigate('/forms')
+    }
+    catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to create form'
+      toast.error(message)
     }
     finally {
       setSubmitting(false)
@@ -62,10 +65,6 @@ export default function NewForm() {
             />
             <p class="text-xs text-muted-foreground">Optional. Shown to respondents and in your dashboard.</p>
           </div>
-
-          <Show when={error()}>
-            <p class="text-sm text-destructive">{error()}</p>
-          </Show>
 
           <div class="flex gap-2">
             <Button variant="default" size="sm" disabled={submitting()} onClick={handleCreate}>

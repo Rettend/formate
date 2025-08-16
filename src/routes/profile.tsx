@@ -1,4 +1,5 @@
 import { createSignal, For, Show } from 'solid-js'
+import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 import { providers } from '~/lib/ai/lists'
@@ -20,7 +21,7 @@ export default function Profile() {
       setInputs(prev => ({ ...prev, [provider]: '' }))
     }
     catch {
-      // noop UI error toast could be added later
+      toast.error('Failed to save API key. Please try again.')
     }
   }
 
@@ -64,7 +65,7 @@ export default function Profile() {
                           when={!ui.apiKeys[p.id]}
                           fallback={(
                             <div class="h-10 flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3">
-                              <p class="text-sm">Key saved</p>
+                              <p class="text-sm">API Key saved</p>
                               <Button variant="ghost" size="icon" onClick={() => deleteKey(p.id)}>
                                 <span class="i-ph:trash-duotone size-5" />
                               </Button>

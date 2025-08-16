@@ -236,7 +236,6 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   if (!form)
     throw new Error('Not found')
 
-  // Lazy import to keep non-essential code out of the default action bundle
   const { planFormWithLLM } = await import('~/lib/ai/form-planner')
   const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
   const safePlan = formPlanSchema.parse(plan)

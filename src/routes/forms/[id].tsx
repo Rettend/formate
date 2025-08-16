@@ -1,13 +1,19 @@
 import { createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
-import { createEffect, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { LLMBuilder } from '~/components/forms/LLMBuilder'
 import { Button } from '~/components/ui/button'
 import { deleteForm, getForm, publishForm, unpublishForm } from '~/server/forms'
 
+export const route = {
+  preload({ params }: { params: { id: string } }) {
+    return getForm({ formId: params.id })
+  },
+}
+
 export default function FormDetail() {
   const params = useParams()
-  const id = () => params.id
+  const id = createMemo(() => params.id)
   const nav = useNavigate()
   const publish = useAction(publishForm)
   const unpublish = useAction(unpublishForm)
@@ -15,6 +21,7 @@ export default function FormDetail() {
   const unpublishSubs = useSubmissions(unpublishForm)
   const remove = useAction(deleteForm)
   const form = createAsync(() => getForm({ formId: id() }))
+  const [saving, setSaving] = createSignal(false)
 
   createEffect(() => {
     if (form() === null)
@@ -88,10 +95,20 @@ export default function FormDetail() {
           </div>
         </div>
 
-        <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
-          <Show when={form()} fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
+        <div class="pt-4 text-card-foreground">
+          <div class="flex items-center justify-between">
             <p class="text-sm text-muted-foreground">Status: {optimisticStatus() ?? '—'}</p>
-            <LLMBuilder formId={id()} />
+            <Show when={saving()}>
+              <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <span class="i-svg-spinners:180-ring" />
+                <span>Saving…</span>
+              </div>
+            </Show>
+          </div>
+          <Show when={form()} keyed fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
+            {f => (
+              <LLMBuilder form={f} onSavingChange={setSaving} />
+            )}
           </Show>
         </div>
       </section>

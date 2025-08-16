@@ -3,6 +3,7 @@ import { AuthProvider } from '@rttnd/gau/client/solid'
 import { Router } from '@solidjs/router'
 import { FileRoutes } from '@solidjs/start/router'
 import { Suspense } from 'solid-js'
+import { Toaster } from '~/components/ui/sonner'
 import { RootProviders } from '~/stores/root'
 import { clientEnv } from './env/client'
 import '@fontsource-variable/league-spartan'
@@ -17,6 +18,7 @@ export default function App() {
           <>
             <RootProviders>
               <Suspense>{props.children}</Suspense>
+              <Toaster position="bottom-right" richColors closeButton />
             </RootProviders>
           </>
         )}
