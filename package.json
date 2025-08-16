@@ -28,6 +28,7 @@
     "@solidjs/start": "^1.1.7",
     "@unocss/reset": "^66.4.2",
     "ai": "^5.0.14",
+    "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "drizzle-orm": "^0.44.4",
     "solid-js": "^1.9.9",

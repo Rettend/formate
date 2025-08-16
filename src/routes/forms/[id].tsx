@@ -1,4 +1,5 @@
-import { createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
+import type { RouteDefinition } from '@solidjs/router'
+import { A, createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { LLMBuilder } from '~/components/forms/LLMBuilder'
@@ -6,10 +7,10 @@ import { Button } from '~/components/ui/button'
 import { deleteForm, getForm, publishForm, unpublishForm } from '~/server/forms'
 
 export const route = {
-  preload({ params }: { params: { id: string } }) {
+  preload({ params }) {
     return getForm({ formId: params.id })
   },
-}
+} satisfies RouteDefinition
 
 export default function FormDetail() {
   const params = useParams()
@@ -39,6 +40,7 @@ export default function FormDetail() {
 
   const handleShare = async () => {
     const base = typeof window !== 'undefined' ? window.location.origin : ''
+    // TODO: switch to slug when available on the form
     const url = `${base}/r/${id()}`
     try {
       await navigator.clipboard.writeText(url)
@@ -80,6 +82,12 @@ export default function FormDetail() {
             <p class="text-sm text-muted-foreground">ID: {id()}</p>
           </div>
           <div class="flex items-center gap-2">
+            <A href={`/r/${form()?.slug || id()}`}>
+              <Button size="sm" variant="outline">
+                <span class="i-ph:eye-bold" />
+                <span>View</span>
+              </Button>
+            </A>
             <Button size="sm" variant="outline" disabled={isPublishing() || isUnpublishing()} onClick={handleTogglePublish}>
               <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
               <span>{optimisticStatus() === 'published' ? 'Unpublish' : 'Publish'}</span>

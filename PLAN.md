@@ -57,7 +57,7 @@ Bar List, Charts, Delta Bar, Progress, Progress Circle, Accordion, Alert, Alert 
 Conventions
 
 - SQLite via Turso, Drizzle ORM, `snake_case` columns, timestamps as `integer({ mode: 'timestamp' })`.
-- IDs are base64url `uuid_v7` via `uuidV7Base64url()`.
+- IDs are base64url `uuid_v7` via `uuidV7Base58()`.
 - Store JSON as `text()` with `$type<T>()` for TypeScript safety. Validate on read/write in server functions.
 
 ### Entities

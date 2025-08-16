@@ -320,10 +320,7 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
                 </Select>
                 <Show when={selectedModelObject()}>
                   <div class="mt-2 flex items-center justify-center gap-6 text-xs">
-                    <div class="flex flex-col items-center justify-center gap-1.5">
-                      <span class="text-muted-foreground">Quality</span>
-                      <ModelRatingDisplay model={selectedModelObject()!} />
-                    </div>
+                    <ModelRatingDisplay model={selectedModelObject()!} />
                   </div>
                 </Show>
               </Show>

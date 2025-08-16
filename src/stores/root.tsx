@@ -1,10 +1,13 @@
 import type { ParentProps } from 'solid-js'
+import { RespondentStoreProvider } from './respondent'
 import { UIStoreProvider } from './ui'
 
-export function RootProviders(props: ParentProps) {
+export function RootStoreProvider(props: ParentProps) {
   return (
-    <UIStoreProvider>
-      {props.children}
-    </UIStoreProvider>
+    <RespondentStoreProvider>
+      <UIStoreProvider>
+        {props.children}
+      </UIStoreProvider>
+    </RespondentStoreProvider>
   )
 }

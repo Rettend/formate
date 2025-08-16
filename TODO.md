@@ -12,7 +12,7 @@ Format:
 
 ## Milestone 1 — Roles + Minimal Forms + Hard‑coded Chat on `/r/:slug`
 
-- [ ] Database & Migrations (Turso via Drizzle)
+- [-] Database & Migrations (Turso via Drizzle)
   - [ ] Extend `Users`
     - [ ] Add `role: 'respondent' | 'creator' | 'admin'` (default `'respondent'`)
     - [ ] Add `invitedByUserId` (nullable fk → `users.id`)
@@ -22,6 +22,7 @@ Format:
     - [ ] Optional now (can be null): `aiConfigJson`, `settingsJson`
     - [ ] Indexes: `(ownerUserId, slug)` unique, `status`, `isPublic`
   - [ ] Run `bun run db:push`
+  - Notes: Current schema already includes `Users`, `Accounts`, `Forms`, and `FormTestRuns`; `Forms` does not yet have `slug`/`isPublic`, and `Users` lacks `role`/invite lineage.
 - [ ] Security & Auth (GAU)
   - [ ] Ensure session includes `user.role`
   - [ ] Guards: `requireCreator`
@@ -33,7 +34,9 @@ Format:
   - [ ] `getPublicFormBySlug({ slug })` — public (expose: id, title, description; respect `isPublic`)
 - [ ] UI (Creator)
   - [x] `/forms` — minimal list and “Create form”; quick actions (open, publish/unpublish, share, delete)
-  - [-] Skip full builder; show title/description only for now
+  - [x] `/forms/:id` — integrated LLM builder (prompt save, plan with AI, test runs)
+    - Implemented actions: `saveFormPrompt`, `planWithAI`, `createTestRun`, `runTestStep`
+    - Share currently copies `/r/:id` (temporary) until slug/public route exists
 - [ ] UI (Respondent)
   - [ ] `/r/:slug` — fetch public form; render minimal chat
   - [ ] `sendMessage()` server action that returns a hard-coded single reply (no provider, no persistence)
@@ -69,9 +72,10 @@ Format:
 ## Milestone 3 — Real AI Streaming (Google via Vercel AI v5)
 
 - [ ] AI Integration (`/src/lib/ai`)
-  - [ ] Provider-agnostic interface (keep small) with one implementation: Google (no FakeAI)
+  - [x] Provider-agnostic interface (keep small) with one implementation: Google (no FakeAI)
   - [ ] `createAIClient(config)`
-  - [ ] `streamAIReply({ messages, aiConfig, signal })` — returns `ReadableStream<string>` + final AI message
+  - [-] `streamAIReply({ messages, aiConfig, signal })` — returns `ReadableStream<string>` + final AI message
+    - Note: `streamChatText()` helper exists; add small wrapper to return final AI message + stream
 - [ ] Server Functions
   - [ ] `sendMessage` streams chunks from `streamAIReply`; persist user message immediately; upsert final AI message with `tokensOut`, `latencyMs`
 - [ ] Client Glue
@@ -110,7 +114,7 @@ Format:
   - [x] `updateForm({ formId, patch })` — owner
   - [x] `deleteForm({ formId })` — owner
 - [ ] UI
-  - [-] App Shell:
+  - [x] App Shell:
     - [x] `AppHeader` with brand and `ModeToggle`
     - [x] Navigation (`AppNav` + mobile)
     - [x] Auth gating via `AppShell requireAuth`
@@ -130,17 +134,15 @@ Format:
 - [ ] Stores
   - [ ] `FormsStore`: `list`, `byId`, `selection`, `loading`, `error?`; actions (`loadList`, `load`, `create`, `update`, `publish/unpublish`, `remove`); derived (`selectedForm`, `publishedForms`, `draftForms`)
   - [ ] Root store intro (optional here): `RootStoreProvider` composing UI/Auth/Forms/Conversations; migrate gradually
-  - [ ] Rename current UI store exports to `UIStoreProvider` + `useUIStore()`; keep mode/media sync
+  - [x] Rename current UI store exports to `UIStoreProvider` + `useUIStore()`; keep mode/media sync
 
 ## Milestone 6 — Validation & Error Normalization (Zod v4)
 
-- [ ] `/src/lib/validation`
-  - [ ] `idSchema` (base64url uuid v7)
-  - [ ] `paginationSchema`, `formsFilterSchema`
-  - [ ] Forms: `createFormInput`, `updateFormPatch`, `publishFormInput`
-  - [ ] Conversations: `getOrCreateConversationInput`, `sendMessageInput`, `completeConversationInput`
-  - [ ] Invites: `createInviteTokenInput`, `redeemInviteTokenInput`
-  - [ ] `safeParseOrThrow(schema, data)`
+- [x] `idSchema` (base64url uuid v7)
+- [ ] `paginationSchema`, `formsFilterSchema`
+- [ ] Forms: `createFormInput`, `updateFormPatch`, `publishFormInput`
+- [ ] Conversations: `getOrCreateConversationInput`, `sendMessageInput`, `completeConversationInput`
+- [x] `safeParseOrThrow(schema, data)`
 - [ ] `/src/lib/errors`
   - [ ] Error union/codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `VALIDATION`, `CONFLICT`, `INTERNAL`
   - [ ] `normalizeError(e)` → `{ code, message, fields? }`

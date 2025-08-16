@@ -77,9 +77,10 @@ export const getForm = query(async (raw: { formId: string }) => {
 const createFormSchema = z.object({
   title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
   description: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
+  slug: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
 })
 
-export const createForm = action(async (raw: { title?: string, description?: string }) => {
+export const createForm = action(async (raw: { title?: string, description?: string, slug?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -87,11 +88,21 @@ export const createForm = action(async (raw: { title?: string, description?: str
     throw new Error('Unauthorized')
 
   const input = safeParseOrThrow(createFormSchema, raw, 'forms:create')
+  const slugSanitized = input.slug
+    ? input.slug
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 80)
+    : undefined
 
   const [created] = await db.insert(Forms).values({
     ownerUserId: session.user.id,
     title: input.title?.trim() || 'Untitled Form',
     description: input.description?.trim(),
+    slug: slugSanitized,
   }).returning()
 
   return created
@@ -172,6 +183,28 @@ export const unpublishForm = action(async (raw: { formId: string }) => {
     throw new Error('Not found')
   return updated
 }, 'forms:unpublish')
+
+const getPublicBySlugSchema = z.object({ slug: z.string().min(1).max(100) })
+
+export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
+  'use server'
+  const { slug } = safeParseOrThrow(getPublicBySlugSchema, raw, 'forms:getPublicBySlug')
+  // First try by slug (preferred)
+  let rows = await db
+    .select({ id: Forms.id, title: Forms.title, description: Forms.description, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+    .from(Forms)
+    .where(and(eq(Forms.slug, slug), eq(Forms.status, 'published')))
+  let form = rows[0]
+  // Fallback: if the provided slug looks like an id, try by id — allows /r/:id during transition
+  if (!form && /^[\w-]{16,24}$/u.test(slug)) {
+    rows = await db
+      .select({ id: Forms.id, title: Forms.title, description: Forms.description, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+      .from(Forms)
+      .where(and(eq(Forms.id, slug), eq(Forms.status, 'published')))
+    form = rows[0]
+  }
+  return form ?? null
+}, 'forms:getPublicBySlug')
 
 export const deleteForm = action(async (raw: { formId: string }) => {
   'use server'
