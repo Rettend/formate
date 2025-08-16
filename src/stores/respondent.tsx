@@ -44,6 +44,8 @@ export function useRespondentStore() {
 }
 
 export function initProgress(set: SetStoreFunction<RespondentState>, formId: string, userId: string) {
+  set('byForm', formId, prev => prev ?? ({ byUser: {} }))
+  set('byForm', formId, 'byUser', prev => prev ?? ({}))
   set('byForm', formId, 'byUser', userId, prev => prev ?? ({
     conversationId: undefined,
     currentIndex: 0,
