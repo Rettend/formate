@@ -1,14 +1,19 @@
 import type { ModelMessage } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { generateObject, streamObject, streamText } from 'ai'
+import { serverEnv } from '~/env/server'
 
 export { streamText }
 export type { ModelMessage }
 
 export function getProvider(provider: string, id: string, apiKey?: string) {
   switch (provider) {
-    case 'google':
-      return createGoogleGenerativeAI({ apiKey })(id)
+    case 'google': {
+      const key = apiKey || serverEnv.GOOGLE_GENERATIVE_AI_API_KEY
+      if (!key)
+        throw new Error('Missing Google Generative AI API key')
+      return createGoogleGenerativeAI({ apiKey: key })(id)
+    }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

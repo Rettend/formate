@@ -2,6 +2,7 @@ import { action, query } from '@solidjs/router'
 import { and, desc, eq, like } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
+import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 import { db } from './db'
@@ -276,7 +277,15 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
     throw new Error('Not found')
 
   const { planFormWithLLM } = await import('~/lib/ai/form-planner')
-  const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
+  let plan: unknown
+  try {
+    const res = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
+    plan = res.plan
+  }
+  catch (err) {
+    logAIError(err, 'planWithAI')
+    throw new Error(aiErrorToMessage(err))
+  }
   const safePlan = formPlanSchema.parse(plan)
 
   await db
@@ -310,7 +319,15 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
 
   const plan = formPlanSchema.parse(form.settingsJson)
   const { simulateTestRun } = await import('~/lib/ai/form-planner')
-  const { transcript } = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps, apiKey: input.apiKey })
+  let transcript: unknown
+  try {
+    const res = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps, apiKey: input.apiKey })
+    transcript = res.transcript
+  }
+  catch (err) {
+    logAIError(err, 'testRun')
+    throw new Error(aiErrorToMessage(err))
+  }
   const safeTranscript = testRunTranscriptSchema.parse(transcript)
 
   const [created] = await db.insert(FormTestRuns).values({
@@ -352,7 +369,14 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
     throw new Error('Index out of range')
 
   const { simulateTestStep } = await import('~/lib/ai/form-planner')
-  const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
+  let step
+  try {
+    step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
+  }
+  catch (err) {
+    logAIError(err, 'testStep')
+    throw new Error(aiErrorToMessage(err))
+  }
   return { step, total: 1 }
 }, 'forms:testStep')
 

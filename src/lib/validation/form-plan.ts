@@ -54,9 +54,9 @@ export const branchRuleSchema = z.object({
 })
 
 export const formPlanSchema = z.object({
-  summary: z.string().min(1).max(800),
-  intro: z.string().max(300).optional(),
-  outro: z.string().max(300).optional(),
+  summary: z.string().min(1),
+  intro: z.string().optional(),
+  outro: z.string().optional(),
   seed: formFieldSchema,
   stopping: z.object({
     hardLimit: z.object({

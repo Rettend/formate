@@ -7,7 +7,7 @@ import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAuth } from '~/lib/auth'
-import { answerQuestion, completeConversation, getOrCreateConversation, listTurns, rewindOneStep } from '~/server/conversations'
+import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
 import { initProgress, useRespondentStore } from '~/stores/respondent'
 
@@ -26,8 +26,8 @@ export default function Respondent() {
 
   const start = useAction(getOrCreateConversation)
   const answer = useAction(answerQuestion)
-  const complete = useAction(completeConversation)
   const rewind = useAction(rewindOneStep)
+  const reset = useAction(resetConversation)
 
   // Namespaced state within store
   const userId = createMemo(() => auth.session().user?.id ?? 'anon')
@@ -146,10 +146,27 @@ export default function Respondent() {
     }
   }
 
-  const handleComplete = async () => {
+  const handleReset = async () => {
     const convId = progress()?.conversationId
-    if (convId)
-      await complete({ conversationId: convId })
+    if (!convId || !isOwner())
+      return
+
+    setLoading(true)
+    try {
+      const res = await reset({ conversationId: convId })
+      await revalidate([listTurns.key])
+      queueMicrotask(() => {
+        const targetId = res?.firstTurnId ? `#answer-${res.firstTurnId}` : '[data-active-turn] textarea, [data-active-turn] input'
+        const next = document.querySelector(targetId) as HTMLInputElement | HTMLTextAreaElement | null
+        next?.focus()
+      })
+    }
+    catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to reset')
+    }
+    finally {
+      setLoading(false)
+    }
   }
 
   const FieldInput = (props: { field: any, id: string }) => (
@@ -230,19 +247,22 @@ export default function Respondent() {
                         <div class="space-y-2">
                           <FieldInput field={t.questionJson} id={`answer-${t.id}`} />
                           <div class="flex gap-2">
+                            <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>
+                              <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:paper-plane-tilt-bold'} />
+                              <span>{loading() ? 'Sending…' : 'Submit'}</span>
+                            </Button>
                             <Show when={isOwner() && (activeTurn()?.index ?? 0) > 0}>
                               <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
                                 <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-left-bold'} />
                                 <span>Back</span>
                               </Button>
                             </Show>
-                            <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>
-                              <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:paper-plane-tilt-bold'} />
-                              <span>{loading() ? 'Sending…' : 'Submit'}</span>
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={handleComplete}>
-                              Complete
-                            </Button>
+                            <Show when={isOwner()}>
+                              <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
+                                <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-counter-clockwise-bold'} />
+                                <span>Reset</span>
+                              </Button>
+                            </Show>
                           </div>
                         </div>
                       </Show>
@@ -270,6 +290,10 @@ export default function Respondent() {
                       <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
                         <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-left-bold'} />
                         <span>Back</span>
+                      </Button>
+                      <Button size="sm" variant="outline" class="ml-1" onClick={() => handleReset()} disabled={loading()}>
+                        <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-counter-clockwise-bold'} />
+                        <span>Reset</span>
                       </Button>
                     </div>
                   </Show>

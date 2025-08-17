@@ -4,6 +4,7 @@ import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
 import { uuidV7Base58 } from '~/lib'
 import { generateStructured } from '~/lib/ai'
+import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
 import { formFieldSchema } from '~/lib/validation/form-plan'
 import { ensure } from '~/utils'
@@ -252,6 +253,46 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
   return { ok: true, reopenedTurnId: updatedLast?.id }
 }, 'conv:rewind')
 
+const resetSchema = z.object({ conversationId: idSchema })
+
+// Owner-only: reset entire conversation to the beginning (delete all turns and reinsert seed)
+export const resetConversation = action(async (raw: { conversationId: string }) => {
+  'use server'
+  const userId = await requireUserId()
+  const { conversationId } = safeParseOrThrow(resetSchema, raw, 'conv:reset')
+
+  // Load conversation and form to check ownership
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Error('Conversation not found')
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  if (!form)
+    throw new Error('Form not found')
+  if (form.ownerUserId !== userId)
+    throw new Error('Forbidden')
+
+  // Delete all turns for this conversation
+  await db.delete(Turns).where(eq(Turns.conversationId, conversationId))
+
+  // Mark conversation active and clear completion and end metadata
+  await db
+    .update(Conversations)
+    .set({ status: 'active', completedAt: null as any, clientMetaJson: null as any })
+    .where(eq(Conversations.id, conversationId))
+
+  // Recreate first turn based on form seed
+  await ensureFirstTurn(conversationId, conv.formId)
+
+  // Return the first turn id for focusing
+  const first = await db
+    .select()
+    .from(Turns)
+    .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, 0)))
+    .limit(1)
+
+  return { ok: true, firstTurnId: first[0]?.id }
+}, 'conv:reset')
+
 // Helpers
 async function ensureFirstTurn(conversationId: string, formId: string) {
   const existing = await db
@@ -370,15 +411,22 @@ You may also decide to end the form early if you have enough information or the 
   const unionSchema = z.union([formFieldSchema, endSchema])
   const schema = stopping.llmMayEnd ? unionSchema : formFieldSchema
 
-  const resp = await generateStructured({
-    schema,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: JSON.stringify(user) },
-    ],
-    provider,
-    modelId,
-  })
+  let resp
+  try {
+    resp = await generateStructured({
+      schema,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(user) },
+      ],
+      provider,
+      modelId,
+    })
+  }
+  catch (err) {
+    logAIError(err, 'conv:generateFollowUp')
+    throw new Error(aiErrorToMessage(err))
+  }
 
   const obj: any = resp.object
 
