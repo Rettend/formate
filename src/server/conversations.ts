@@ -8,6 +8,7 @@ import { aiErrorToMessage, extractAICause, logAIError } from '~/lib/ai/errors'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
 import { formFieldSchema } from '~/lib/validation/form-plan'
 import { ensure } from '~/utils'
+import { decryptSecret } from './crypto'
 import { db } from './db'
 import { Conversations, Forms, Turns } from './db/schema'
 
@@ -413,6 +414,18 @@ You may also decide to end the form early if you have enough information or the 
 
   let resp
   try {
+    // Decrypt per-form provider key if available
+    let apiKey: string | undefined
+    try {
+      const enc: string | undefined = (form as any).aiProviderKeyEnc
+      if (enc && typeof enc === 'string' && enc.length > 0)
+        apiKey = await decryptSecret(enc)
+    }
+    catch (e) {
+      // If decryption fails, continue without apiKey so provider default applies
+      console.error('[conv] Failed to decrypt provider key:', e)
+    }
+
     resp = await generateStructured({
       schema,
       messages: [
@@ -421,6 +434,7 @@ You may also decide to end the form early if you have enough information or the 
       ],
       provider,
       modelId,
+      apiKey,
     })
   }
   catch (err) {

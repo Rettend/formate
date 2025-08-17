@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
+import { encryptSecret } from './crypto'
 import { db } from './db'
 import { Forms, FormTestRuns } from './db/schema'
 
@@ -73,7 +74,12 @@ export const getForm = query(async (raw: { formId: string }) => {
 
   const rows = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   const form = rows[0]
-  return form ?? null
+  if (!form)
+    return null
+  // Never send the encrypted provider key to the client; only indicate presence
+  const hasProviderKey = Boolean((form as any).aiProviderKeyEnc)
+  const { aiProviderKeyEnc: _omit, ...rest } = form as any
+  return { ...rest, hasProviderKey } as any
 }, 'forms:get')
 
 const createFormSchema = z.object({
@@ -253,6 +259,51 @@ export const saveFormPrompt = action(async (raw: { formId: string, prompt: strin
     throw new Error('Not found')
   return { ok: true }
 }, 'forms:savePrompt')
+
+const saveProviderKeySchema = z.object({ formId: idSchema, apiKey: z.string().min(1) })
+const clearProviderKeySchema = z.object({ formId: idSchema })
+
+export const saveFormProviderKey = action(async (raw: { formId: string, apiKey: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+  const input = safeParseOrThrow(saveProviderKeySchema, raw, 'forms:saveProviderKey')
+
+  // ensure ownership
+  const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!form)
+    throw new Error('Not found')
+
+  const enc = await encryptSecret(input.apiKey)
+  const [updated] = await db
+    .update(Forms)
+    .set({ aiProviderKeyEnc: enc, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning({ id: Forms.id })
+  return { ok: Boolean(updated) }
+}, 'forms:saveProviderKey')
+
+export const clearFormProviderKey = action(async (raw: { formId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+  const input = safeParseOrThrow(clearProviderKeySchema, raw, 'forms:clearProviderKey')
+
+  const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!form)
+    throw new Error('Not found')
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ aiProviderKeyEnc: null as any, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning({ id: Forms.id })
+  return { ok: Boolean(updated) }
+}, 'forms:clearProviderKey')
 
 const planWithAISchema = z.object({
   formId: idSchema,

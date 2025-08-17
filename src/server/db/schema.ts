@@ -43,6 +43,7 @@ export const Forms = sqliteTable('forms', {
   title: text().notNull(),
   slug: text(),
   aiConfigJson: text({ mode: 'json' }).$type<{ prompt: string, provider: string, modelId: string }>(),
+  aiProviderKeyEnc: text(),
   seedQuestionJson: text({ mode: 'json' }).$type<FormField>(),
   settingsJson: text({ mode: 'json' }).$type<FormPlan>(),
   status: text().notNull().default('draft'),

@@ -10,7 +10,7 @@ import { Checkbox } from '~/components/ui/checkbox'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { deleteForm, getForm, publishForm, saveFormStopping, unpublishForm } from '~/server/forms'
+import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormProviderKey, saveFormStopping, unpublishForm } from '~/server/forms'
 
 export const route = {
   preload({ params }) {
@@ -29,9 +29,13 @@ export default function FormDetail() {
   const saveStoppingSubs = useSubmissions(saveFormStopping)
   const remove = useAction(deleteForm)
   const saveStopping = useAction(saveFormStopping)
+  const saveKey = useAction(saveFormProviderKey)
+  const clearKey = useAction(clearFormProviderKey)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
   const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
+  const [providerKeyInput, setProviderKeyInput] = createSignal('')
+  const [hasStoredKey, setHasStoredKey] = createSignal(false)
 
   const getDefaultStoppingFromForm = () => {
     const s: any = (form() as any)?.settingsJson?.stopping
@@ -45,6 +49,9 @@ export default function FormDetail() {
   createEffect(() => {
     if (form() && !stopping())
       setStopping(getDefaultStoppingFromForm())
+    // Track if a key is present on the form (we never show the raw key)
+    if (form())
+      setHasStoredKey(Boolean((form() as any)?.hasProviderKey))
   })
 
   const handleSaveStopping = async () => {
@@ -162,7 +169,7 @@ export default function FormDetail() {
                       <Tabs defaultValue="stopping" class="w-full">
                         <TabsList class="grid grid-cols-2 w-full">
                           <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
-                          <TabsTrigger value="todo">TODO</TabsTrigger>
+                          <TabsTrigger value="access">LLM Access</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="stopping">
@@ -273,8 +280,48 @@ export default function FormDetail() {
                           </div>
                         </TabsContent>
 
-                        <TabsContent value="todo">
-                          <div class="p-3 text-sm text-muted-foreground">Coming soon…</div>
+                        <TabsContent value="access">
+                          <div class="p-3">
+                            <h2 class="text-sm font-semibold">API key</h2>
+                            <p class="mb-2 text-sm text-muted-foreground">Stored encrypted on the server and used when respondents answer this form. It's never exposed to the respondent's browser.</p>
+                            <div>
+                              <Show
+                                when={!hasStoredKey()}
+                                fallback={(
+                                  <div class="h-10 flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3">
+                                    <p class="text-sm">API Key saved</p>
+                                    <Button variant="ghost" size="icon" onClick={() => { void clearKey({ formId: id() }).then(() => revalidate([getForm.key])) }}>
+                                      <span class="i-ph:trash-duotone size-5" />
+                                    </Button>
+                                  </div>
+                                )}
+                              >
+                                <form
+                                  class="flex items-center gap-2"
+                                  onSubmit={(e) => {
+                                    e.preventDefault()
+                                    const v = providerKeyInput().trim()
+                                    if (v.length === 0)
+                                      return
+                                    void saveKey({ formId: id(), apiKey: v }).then(async () => {
+                                      setProviderKeyInput('')
+                                      await revalidate([getForm.key])
+                                    })
+                                  }}
+                                >
+                                  <input
+                                    type="password"
+                                    autocomplete="off"
+                                    placeholder="Paste provider API key"
+                                    class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
+                                    value={providerKeyInput()}
+                                    onInput={e => setProviderKeyInput((e.currentTarget as HTMLInputElement).value)}
+                                  />
+                                  <Button type="submit" size="sm">Save</Button>
+                                </form>
+                              </Show>
+                            </div>
+                          </div>
                         </TabsContent>
                       </Tabs>
                     </CollapsibleCard>
