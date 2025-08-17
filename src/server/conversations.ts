@@ -109,23 +109,47 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
     .set({ answerJson, status: 'answered', answeredAt: new Date() })
     .where(eq(Turns.id, turnId))
 
-  // Determine next step (based on answered turn index)
+  // Determine next step with stopping criteria
   const answeredIndex = turn.index
+  const nextIndex = answeredIndex + 1
 
-  // For the first iteration: create exactly one follow-up after the seed, then complete
-  if (answeredIndex === 0) {
-    const next = await createFollowUpTurn(conversationId, 1)
-    return { nextTurn: next }
+  // Load form to read plan/stopping
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  if (!form)
+    throw new Error('Form not found')
+
+  const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
+
+  // If asking one more would exceed hard limit, complete now
+  if (shouldHardStop(nextIndex)) {
+    const [updated] = await db
+      .update(Conversations)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
+      } as any)
+      .where(eq(Conversations.id, conversationId))
+      .returning()
+    return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
   }
 
-  // No more turns -> complete conversation
-  const [updated] = await db
-    .update(Conversations)
-    .set({ status: 'completed', completedAt: new Date() })
-    .where(eq(Conversations.id, conversationId))
-    .returning()
+  // Otherwise, ask the LLM for the next question or end signal
+  const followUp = await createFollowUpTurnOrEnd(conversationId, nextIndex)
+  if (followUp.kind === 'end') {
+    const [updated] = await db
+      .update(Conversations)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: followUp.reason, atTurn: answeredIndex, modelId: followUp.modelId }),
+      } as any)
+      .where(eq(Conversations.id, conversationId))
+      .returning()
+    return { completed: Boolean(updated), reason: followUp.reason }
+  }
 
-  return { completed: Boolean(updated) }
+  return { nextTurn: followUp.turn }
 }, 'conv:answer')
 
 const completeSchema = z.object({ conversationId: idSchema })
@@ -231,7 +255,38 @@ async function ensureFirstTurn(conversationId: string, formId: string) {
   })
 }
 
-async function createFollowUpTurn(conversationId: string, indexValue: number) {
+type EndReason = 'enough_info' | 'trolling' | 'hard_limit'
+
+function getStopping(plan: any | undefined) {
+  const s = plan?.stopping ?? {}
+  return {
+    hardLimit: {
+      maxQuestions: Math.min(50, Math.max(1, Number(s?.hardLimit?.maxQuestions ?? 10))),
+    },
+    llmMayEnd: s?.llmMayEnd ?? true,
+    endReasons: Array.isArray(s?.endReasons) && s.endReasons.length > 0 ? s.endReasons : ['enough_info', 'trolling'],
+  }
+}
+
+function getHardLimitInfo(form: any) {
+  const stopping = getStopping(form?.settingsJson)
+  const maxQuestions = stopping.hardLimit.maxQuestions
+  const shouldHardStop = (nextIndex: number) => {
+    const totalIfNext = nextIndex + 1
+    return totalIfNext > maxQuestions
+  }
+  return { stopping, maxQuestions, shouldHardStop }
+}
+
+function mergeEndMeta(prev: any, meta: { reason: EndReason, atTurn: number, modelId?: string }) {
+  const base = (prev && typeof prev === 'object') ? prev : {}
+  return { ...base, end: { ...(base.end || {}), ...meta } }
+}
+
+async function createFollowUpTurnOrEnd(conversationId: string, indexValue: number): Promise<
+  | { kind: 'turn', turn: any }
+  | { kind: 'end', reason: Exclude<EndReason, 'hard_limit'>, modelId?: string }
+> {
   // Gather context: conversation, form (incl. AI config + plan), past Q/A turns
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
@@ -261,22 +316,14 @@ async function createFollowUpTurn(conversationId: string, indexValue: number) {
   const modelId = (form as any).aiConfigJson?.modelId as string | undefined
   const prompt = (form as any).aiConfigJson?.prompt as string | undefined
 
-  async function insert(question: any) {
-    const [created] = await db.insert(Turns).values({
-      conversationId,
-      index: indexValue,
-      questionJson: question as any,
-      status: 'awaiting_answer',
-    }).returning()
-    return created
-  }
+  const stopping = getStopping((form as any).settingsJson)
 
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
 
   // Prepare messages for the LLM
-  const system = `You are an expert adaptive survey designer. Given a form's goal and a transcript of previous Q/A, craft the single next best question.
-Return ONLY a JSON object that matches the exact schema. Do not include any prose. Keep it concise, clear, and non-leading.`
+  const system = `You are an expert adaptive survey designer. Given the form's goal and a transcript of previous Q/A, craft the single next best question.
+You may also decide to end the form early if you have enough information or the respondent is clearly not engaging.`
 
   const user = {
     formGoalPrompt: prompt,
@@ -286,6 +333,10 @@ Return ONLY a JSON object that matches the exact schema. Do not include any pros
       maxOptions: 6,
       preferShortWhenUnsure: true,
     },
+    earlyEnd: {
+      allowed: Boolean(stopping.llmMayEnd),
+      reasons: stopping.endReasons,
+    },
     history: history.map(h => ({
       index: h.index,
       question: h.question ? { label: (h.question as any).label, type: (h.question as any).type } : undefined,
@@ -293,8 +344,12 @@ Return ONLY a JSON object that matches the exact schema. Do not include any pros
     })),
   }
 
-  const { object } = await generateStructured({
-    schema: formFieldSchema,
+  const endSchema = z.object({ end: z.object({ reason: z.enum(['enough_info', 'trolling']) }) })
+  const unionSchema = z.union([formFieldSchema, endSchema])
+  const schema = stopping.llmMayEnd ? unionSchema : formFieldSchema
+
+  const resp = await generateStructured({
+    schema,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: JSON.stringify(user) },
@@ -303,9 +358,25 @@ Return ONLY a JSON object that matches the exact schema. Do not include any pros
     modelId,
   })
 
+  const obj: any = resp.object
+
+  // If the model returned an object with an "__end__" marker or a minimal end shape (end.reason), treat as end
+  if (stopping.llmMayEnd && obj && typeof obj === 'object' && (obj.end?.reason === 'enough_info' || obj.end?.reason === 'trolling')) {
+    if (Array.isArray(stopping.endReasons) && stopping.endReasons.includes(obj.end.reason))
+      return { kind: 'end', reason: obj.end.reason, modelId }
+  }
+
+  // Otherwise, treat as question and insert
   const question = {
-    ...object,
+    ...obj,
     id: uuidV7Base58(),
   }
-  return insert(question)
+
+  const [created] = await db.insert(Turns).values({
+    conversationId,
+    index: indexValue,
+    questionJson: question as any,
+    status: 'awaiting_answer',
+  }).returning()
+  return { kind: 'turn', turn: created }
 }

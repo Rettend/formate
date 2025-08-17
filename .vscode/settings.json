@@ -11,16 +11,16 @@
 
   // Silent the stylistic rules in you IDE, but still auto fix them
   "eslint.rules.customizations": [
-    { "rule": "style/*", "severity": "warn", "fixable": true },
-    { "rule": "format/*", "severity": "warn", "fixable": true },
-    { "rule": "*-indent", "severity": "warn", "fixable": true },
-    { "rule": "*-spacing", "severity": "warn", "fixable": true },
-    { "rule": "*-spaces", "severity": "warn", "fixable": true },
-    { "rule": "*-order", "severity": "warn", "fixable": true },
-    { "rule": "*-dangle", "severity": "warn", "fixable": true },
-    { "rule": "*-newline", "severity": "warn", "fixable": true },
-    { "rule": "*quotes", "severity": "warn", "fixable": true },
-    { "rule": "*semi", "severity": "warn", "fixable": true }
+    { "rule": "style/*", "severity": "off", "fixable": true },
+    { "rule": "format/*", "severity": "off", "fixable": true },
+    { "rule": "*-indent", "severity": "off", "fixable": true },
+    { "rule": "*-spacing", "severity": "off", "fixable": true },
+    { "rule": "*-spaces", "severity": "off", "fixable": true },
+    { "rule": "*-order", "severity": "off", "fixable": true },
+    { "rule": "*-dangle", "severity": "off", "fixable": true },
+    { "rule": "*-newline", "severity": "off", "fixable": true },
+    { "rule": "*quotes", "severity": "off", "fixable": true },
+    { "rule": "*semi", "severity": "off", "fixable": true }
   ],
 
   // Enable eslint for all supported languages

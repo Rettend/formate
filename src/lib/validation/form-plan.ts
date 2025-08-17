@@ -58,6 +58,13 @@ export const formPlanSchema = z.object({
   intro: z.string().max(300).optional(),
   outro: z.string().max(300).optional(),
   seed: formFieldSchema,
+  stopping: z.object({
+    hardLimit: z.object({
+      maxQuestions: z.number().int().min(1).max(50).default(10),
+    }).default({ maxQuestions: 10 }),
+    llmMayEnd: z.boolean().default(true),
+    endReasons: z.array(z.enum(['enough_info', 'trolling'])).min(0).max(2).default(['enough_info', 'trolling']),
+  }).optional(),
 })
 
 export type FormPlan = z.infer<typeof formPlanSchema>

@@ -28,7 +28,7 @@ export function AppSidebar() {
 
   return (
     <aside class="hidden sm:block lg:w-56 sm:w-14">
-      <nav class="sticky top-14 flex flex-col gap-1">
+      <nav class="sticky top-21 flex flex-col gap-1">
         <For each={NAV_ITEMS}>
           {item => (
             <A

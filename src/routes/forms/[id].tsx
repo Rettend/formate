@@ -1,10 +1,16 @@
 import type { RouteDefinition } from '@solidjs/router'
+import { debounce } from '@solid-primitives/scheduled'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
-import { createEffect, createMemo, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
+import CollapsibleCard from '~/components/CollapsibleCard'
 import { LLMBuilder } from '~/components/forms/LLMBuilder'
 import { Button } from '~/components/ui/button'
-import { deleteForm, getForm, publishForm, unpublishForm } from '~/server/forms'
+import { Checkbox } from '~/components/ui/checkbox'
+import { Label } from '~/components/ui/label'
+import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import { deleteForm, getForm, publishForm, saveFormStopping, unpublishForm } from '~/server/forms'
 
 export const route = {
   preload({ params }) {
@@ -20,9 +26,38 @@ export default function FormDetail() {
   const unpublish = useAction(unpublishForm)
   const publishSubs = useSubmissions(publishForm)
   const unpublishSubs = useSubmissions(unpublishForm)
+  const saveStoppingSubs = useSubmissions(saveFormStopping)
   const remove = useAction(deleteForm)
+  const saveStopping = useAction(saveFormStopping)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
+  const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
+
+  const getDefaultStoppingFromForm = () => {
+    const s: any = (form() as any)?.settingsJson?.stopping
+    return {
+      hardLimit: { maxQuestions: Math.min(50, Math.max(1, Number(s?.hardLimit?.maxQuestions ?? 10))) },
+      llmMayEnd: Boolean(s?.llmMayEnd ?? true),
+      endReasons: Array.isArray(s?.endReasons) && s.endReasons.length > 0 ? s.endReasons : ['enough_info', 'trolling'],
+    }
+  }
+
+  createEffect(() => {
+    if (form() && !stopping())
+      setStopping(getDefaultStoppingFromForm())
+  })
+
+  const handleSaveStopping = async () => {
+    const s = stopping()
+    if (!s)
+      return
+    await saveStopping({ formId: id(), stopping: s })
+    await revalidate([getForm.key])
+  }
+
+  const saveStoppingDebounced = debounce(() => {
+    untrack(() => handleSaveStopping())
+  }, 600)
 
   createEffect(() => {
     if (form() === null)
@@ -76,12 +111,16 @@ export default function FormDetail() {
   return (
     <AppShell requireAuth>
       <section>
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-semibold tracking-tight">{form()?.title ?? 'Form'}</h1>
-            <p class="text-sm text-muted-foreground">ID: {id()}</p>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <h1 class="min-w-0 flex items-center gap-2 text-xl font-semibold tracking-tight">
+              <span class="truncate" title={form()?.title ?? 'Form'}>{form()?.title ?? 'Form'}</span>
+              <span class="shrink-0 text-sm text-muted-foreground">—</span>
+              <span class="shrink-0 text-sm text-muted-foreground">{optimisticStatus()}</span>
+            </h1>
+            <p class="break-all text-sm text-muted-foreground">ID: {id()}</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="w-full flex flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <A href={`/r/${form()?.slug || id()}`}>
               <Button size="sm" variant="outline">
                 <span class="i-ph:eye-bold" />
@@ -103,19 +142,145 @@ export default function FormDetail() {
           </div>
         </div>
 
-        <div class="pt-4 text-card-foreground">
-          <div class="flex items-center justify-between">
-            <p class="text-sm text-muted-foreground">Status: {optimisticStatus() ?? '—'}</p>
-            <Show when={saving()}>
-              <div class="flex items-center gap-2 text-xs text-muted-foreground">
+        <div class="relative pt-4 text-card-foreground">
+          <Show when={saving() || saveStoppingSubs.values().some(s => s.pending && getInputFormId(s.input) === id())}>
+            <div class="pointer-events-none absolute right-2 top-2 z-10">
+              <div class="pointer-events-auto flex items-center gap-2 border rounded-md bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm">
                 <span class="i-svg-spinners:180-ring" />
-                <span>Saving…</span>
+                <span>Saving...</span>
               </div>
-            </Show>
-          </div>
+            </div>
+          </Show>
           <Show when={form()} keyed fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
             {f => (
-              <LLMBuilder form={f} onSavingChange={setSaving} />
+              <LLMBuilder
+                form={f}
+                onSavingChange={setSaving}
+                settingsSlot={(
+                  <div>
+                    <CollapsibleCard title="Settings" defaultOpen>
+                      <Tabs defaultValue="stopping" class="w-full">
+                        <TabsList class="grid grid-cols-2 w-full">
+                          <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
+                          <TabsTrigger value="todo">TODO</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="stopping">
+                          <div class="p-3">
+                            <p class="mb-4 text-sm text-muted-foreground">Control when the interview ends.</p>
+                            <div class="grid gap-4 sm:grid-cols-2">
+                              <div
+                                class="flex flex-col gap-2"
+                                onFocusOut={(e) => {
+                                  const next = e.relatedTarget as Node | null
+                                  const curr = e.currentTarget as HTMLDivElement
+                                  if (next && curr.contains(next))
+                                    return
+                                  void handleSaveStopping()
+                                }}
+                              >
+                                <label class="text-sm">Max questions (hard limit)</label>
+                                <p class="text-xs text-muted-foreground">Includes the seed question.</p>
+                                <NumberField
+                                  class="w-full"
+                                  value={stopping()?.hardLimit.maxQuestions ?? 10}
+                                  onChange={(val) => {
+                                    const base = (val === '' || val == null)
+                                      ? 10
+                                      : (typeof val === 'number' ? val : Number(val))
+                                    const clamped = Math.min(50, Math.max(1, base))
+                                    setStopping(s => ({ ...(s as any), hardLimit: { maxQuestions: clamped } }))
+                                    saveStoppingDebounced()
+                                  }}
+                                  minValue={1}
+                                  maxValue={50}
+                                  step={1}
+                                >
+                                  <NumberFieldGroup>
+                                    <NumberFieldInput aria-label="Max questions (includes seed)" />
+                                    <NumberFieldDecrementTrigger />
+                                    <NumberFieldIncrementTrigger />
+                                  </NumberFieldGroup>
+                                </NumberField>
+                              </div>
+                              <div class="flex flex-col gap-2">
+                                <div class="flex items-start space-x-2">
+                                  <Checkbox
+                                    id="llm-may-end"
+                                    checked={stopping()?.llmMayEnd ?? true}
+                                    onChange={(v) => {
+                                      setStopping(s => ({ ...(s as any), llmMayEnd: Boolean(v) }))
+                                      void handleSaveStopping()
+                                    }}
+                                  />
+                                  <div class="grid gap-1.5 leading-none">
+                                    <Label for="llm-may-end-input">End early when appropriate</Label>
+                                    <p class="text-xs text-muted-foreground">Allow the LLM to end the interview early</p>
+                                  </div>
+                                </div>
+
+                                <div class="mt-3 border rounded-md p-3">
+                                  <span class="mb-2 block text-xs text-muted-foreground font-medium">Early end reasons</span>
+                                  <div class={`flex flex-col gap-3 ${!(stopping()?.llmMayEnd) ? 'opacity-60' : ''}`}>
+                                    <div class="flex items-start space-x-2">
+                                      <Checkbox
+                                        id="reason-enough-info"
+                                        disabled={!stopping()?.llmMayEnd}
+                                        checked={Boolean(stopping()?.endReasons.includes('enough_info'))}
+                                        onChange={(v) => {
+                                          setStopping((s) => {
+                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            if (v)
+                                              next.add('enough_info')
+                                            else next.delete('enough_info')
+                                            const arr = Array.from(next)
+                                            return { ...(s as any), endReasons: arr as any }
+                                          })
+                                          void handleSaveStopping()
+                                        }}
+                                      />
+                                      <div class="grid gap-1.5 leading-none">
+                                        <Label for="reason-enough-info-input">Enough info</Label>
+                                        <p class="text-xs text-muted-foreground">End early when you have sufficient signal.</p>
+                                      </div>
+                                    </div>
+                                    <div class="flex items-start space-x-2">
+                                      <Checkbox
+                                        id="reason-trolling"
+                                        disabled={!stopping()?.llmMayEnd}
+                                        checked={Boolean(stopping()?.endReasons.includes('trolling'))}
+                                        onChange={(v) => {
+                                          setStopping((s) => {
+                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            if (v)
+                                              next.add('trolling')
+                                            else next.delete('trolling')
+                                            const arr = Array.from(next)
+                                            return { ...(s as any), endReasons: arr as any }
+                                          })
+                                          void handleSaveStopping()
+                                        }}
+                                      />
+                                      <div class="grid gap-1.5 leading-none">
+                                        <Label for="reason-trolling-input">Respondent trolling</Label>
+                                        <p class="text-xs text-muted-foreground">Stop if responses are clearly low-signal.</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="todo">
+                          <div class="p-3 text-sm text-muted-foreground">Coming soon…</div>
+                        </TabsContent>
+                      </Tabs>
+                    </CollapsibleCard>
+                  </div>
+                )}
+              />
             )}
           </Show>
         </div>

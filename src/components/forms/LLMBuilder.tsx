@@ -1,3 +1,4 @@
+import type { JSX } from 'solid-js'
 import type { ModelConfigObject, Provider } from '~/lib/ai/lists'
 import type { FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import type { Form } from '~/server/db/schema'
@@ -15,7 +16,7 @@ import { createTestRun, getForm, planWithAI, runTestStep, saveFormPrompt } from 
 import { useUIStore } from '~/stores/ui'
 import { decryptApiKey } from '~/utils/crypto'
 
-export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolean) => void }) {
+export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolean) => void, settingsSlot?: JSX.Element }) {
   const { ui } = useUIStore()
   const doPlan = useAction(planWithAI)
   const doTestRun = useAction(createTestRun)
@@ -369,6 +370,9 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
           </div>
         </div>
       </div>
+
+      {/* Optional settings section injected by parent (appears between controls and results) */}
+      {props.settingsSlot}
 
       {/* Results & Live Runner */}
       <div class="grid grid-cols-1 gap-4">

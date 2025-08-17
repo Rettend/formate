@@ -345,3 +345,35 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
   const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
   return { step, total: 1 }
 }, 'forms:testStep')
+
+const stoppingSchema = z.object({
+  hardLimit: z.object({ maxQuestions: z.coerce.number().int().min(1).max(50) }),
+  llmMayEnd: z.boolean(),
+  endReasons: z.array(z.enum(['enough_info', 'trolling'])).min(0).max(2),
+})
+
+export const saveFormStopping = action(async (raw: { formId: string, stopping: z.infer<typeof stoppingSchema> }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(z.object({ formId: idSchema, stopping: stoppingSchema }), raw, 'forms:saveStopping')
+
+  const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!form)
+    throw new Error('Not found')
+
+  const existing = (form as any).settingsJson ?? {}
+  const next = { ...existing, stopping: input.stopping }
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ settingsJson: next as any, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning()
+  if (!updated)
+    throw new Error('Update failed')
+  return { ok: true }
+}, 'forms:saveStopping')

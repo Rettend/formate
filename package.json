@@ -23,6 +23,7 @@
     "@libsql/client": "^0.15.11",
     "@rttnd/gau": "^0.3.5",
     "@solid-primitives/memo": "^1.4.3",
+    "@solid-primitives/scheduled": "^1.5.2",
     "@solid-primitives/storage": "^4.3.3",
     "@solidjs/router": "^0.15.3",
     "@solidjs/start": "^1.1.7",
