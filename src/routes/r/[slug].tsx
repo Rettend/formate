@@ -97,8 +97,7 @@ export default function Respondent() {
 
   const handleRewind = async () => {
     const convId = progress()?.conversationId
-    const turn = activeTurn()
-    if (!convId || !turn || !isOwner() || (turn.index ?? 0) <= 0)
+    if (!convId || !isOwner())
       return
 
     setLoading(true)
@@ -266,6 +265,14 @@ export default function Respondent() {
                       </div>
                     </Show>
                   </div>
+                  <Show when={isOwner()}>
+                    <div>
+                      <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
+                        <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-left-bold'} />
+                        <span>Back</span>
+                      </Button>
+                    </div>
+                  </Show>
                 </div>
               </Show>
             </Show>

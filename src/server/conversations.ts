@@ -28,7 +28,9 @@ export const getOrCreateConversation = action(async (raw: { formId: string }) =>
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
     throw new Error('Form not found')
-  if (form.status !== 'published')
+  // Allow owner to start a conversation even if not published; non-owners require published
+  const isOwner = form.ownerUserId === userId
+  if (!isOwner && form.status !== 'published')
     throw new Error('Form is not published')
 
   // Find existing
@@ -200,34 +202,54 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     .orderBy(asc(Turns.index))
 
   const active = turns.find(t => t.status === 'awaiting_answer')
-  if (!active)
-    throw new Error('No active question to rewind')
-  if (active.index <= 0)
-    throw new Error('No previous question')
+  if (active) {
+    // Normal case: step back from an active turn to the previous one
+    if (active.index <= 0)
+      throw new Error('No previous question')
 
-  const prev = turns.find(t => t.index === active.index - 1)
-  if (!prev)
-    throw new Error('Previous question not found')
+    const prev = turns.find(t => t.index === active.index - 1)
+    if (!prev)
+      throw new Error('Previous question not found')
 
-  // Delete current active question (it is the latest turn by design)
-  await db
-    .delete(Turns)
-    .where(eq(Turns.id, active.id))
+    // Delete current active question (it is the latest turn by design)
+    await db
+      .delete(Turns)
+      .where(eq(Turns.id, active.id))
 
-  // Reopen previous: clear answer and set awaiting
-  const [updatedPrev] = await db
+    // Reopen previous: clear answer and set awaiting
+    const [updatedPrev] = await db
+      .update(Turns)
+      .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+      .where(eq(Turns.id, prev.id))
+      .returning()
+
+    // Ensure conversation is active
+    await db
+      .update(Conversations)
+      .set({ status: 'active', completedAt: null as any })
+      .where(eq(Conversations.id, conversationId))
+
+    return { ok: true, reopenedTurnId: updatedPrev?.id }
+  }
+
+  // Completed (or no active) case: reopen the last answered turn
+  if (turns.length === 0)
+    throw new Error('No questions to rewind')
+
+  const last = turns[turns.length - 1]
+
+  const [updatedLast] = await db
     .update(Turns)
     .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
-    .where(eq(Turns.id, prev.id))
+    .where(eq(Turns.id, last.id))
     .returning()
 
-  // Ensure conversation is active
   await db
     .update(Conversations)
     .set({ status: 'active', completedAt: null as any })
     .where(eq(Conversations.id, conversationId))
 
-  return { ok: true, reopenedTurnId: updatedPrev?.id }
+  return { ok: true, reopenedTurnId: updatedLast?.id }
 }, 'conv:rewind')
 
 // Helpers

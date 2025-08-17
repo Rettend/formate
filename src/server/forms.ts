@@ -184,21 +184,31 @@ const getPublicBySlugSchema = z.object({ slug: z.string().min(1).max(100) })
 
 export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
   'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const viewerId = session?.user?.id
+
   const { slug } = safeParseOrThrow(getPublicBySlugSchema, raw, 'forms:getPublicBySlug')
-  // First try by slug (preferred)
+
+  const canView = (row: { status: string, ownerUserId: string }) =>
+    row.status === 'published' || (viewerId && row.ownerUserId === viewerId)
+
+  // First try by slug (preferred) — fetch without status filter, gate in app
   let rows = await db
     .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
     .from(Forms)
-    .where(and(eq(Forms.slug, slug), eq(Forms.status, 'published')))
-  let form = rows[0]
+    .where(eq(Forms.slug, slug))
+  let form = rows.find(canView)
+
   // Fallback: if the provided slug looks like an id, try by id — allows /r/:id during transition
   if (!form && /^[\w-]{16,24}$/u.test(slug)) {
     rows = await db
       .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
       .from(Forms)
-      .where(and(eq(Forms.id, slug), eq(Forms.status, 'published')))
-    form = rows[0]
+      .where(eq(Forms.id, slug))
+    form = rows.find(canView)
   }
+
   return form ?? null
 }, 'forms:getPublicBySlug')
 
