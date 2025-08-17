@@ -139,6 +139,28 @@ export default function Respondent() {
       })
     }
     catch (e) {
+      // Prefer structured AI error payloads from server (JSON in error.message)
+      if (e instanceof Error && typeof e.message === 'string') {
+        try {
+          const parsed = JSON.parse(e.message)
+          if (parsed && typeof parsed === 'object') {
+            const code = parsed.code as string | undefined
+            const cause = typeof parsed.cause === 'string' ? parsed.cause : undefined
+            if (cause)
+              console.error('[AI:conv:generateFollowUp] cause:', cause)
+            if (code === 'VALIDATION_FAILED') {
+              toast.error('Validation failed')
+              return
+            }
+            // Fallback to provided message
+            if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+              toast.error(parsed.message)
+              return
+            }
+          }
+        }
+        catch {}
+      }
       toast.error(e instanceof Error ? e.message : 'Failed to submit')
     }
     finally {
@@ -246,22 +268,26 @@ export default function Respondent() {
                       <Show when={t.status === 'awaiting_answer'}>
                         <div class="space-y-2">
                           <FieldInput field={t.questionJson} id={`answer-${t.id}`} />
-                          <div class="flex gap-2">
+                          <div class="flex items-center gap-2">
                             <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>
-                              <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:paper-plane-tilt-bold'} />
+                              <span class="i-ph:paper-plane-tilt-bold" />
                               <span>{loading() ? 'Sending…' : 'Submit'}</span>
                             </Button>
                             <Show when={isOwner() && (activeTurn()?.index ?? 0) > 0}>
                               <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
-                                <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-left-bold'} />
+                                <span class="i-ph:arrow-left-bold" />
                                 <span>Back</span>
                               </Button>
                             </Show>
                             <Show when={isOwner()}>
                               <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
-                                <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-counter-clockwise-bold'} />
+                                <span class="i-ph:arrow-counter-clockwise-bold" />
                                 <span>Reset</span>
                               </Button>
+                            </Show>
+                            <Show when={loading()}>
+                              <span class="i-svg-spinners:180-ring size-4 text-muted-foreground" aria-hidden />
+                              <span class="sr-only" aria-live="polite">Working…</span>
                             </Show>
                           </div>
                         </div>
@@ -286,15 +312,19 @@ export default function Respondent() {
                     </Show>
                   </div>
                   <Show when={isOwner()}>
-                    <div>
+                    <div class="flex items-center gap-2">
                       <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
-                        <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-left-bold'} />
+                        <span class="i-ph:arrow-left-bold" />
                         <span>Back</span>
                       </Button>
                       <Button size="sm" variant="outline" class="ml-1" onClick={() => handleReset()} disabled={loading()}>
-                        <span class={loading() ? 'i-svg-spinners:180-ring' : 'i-ph:arrow-counter-clockwise-bold'} />
+                        <span class="i-ph:arrow-counter-clockwise-bold" />
                         <span>Reset</span>
                       </Button>
+                      <Show when={loading()}>
+                        <span class="i-svg-spinners:180-ring size-4 text-muted-foreground" aria-hidden />
+                        <span class="sr-only" aria-live="polite">Working…</span>
+                      </Show>
                     </div>
                   </Show>
                 </div>

@@ -4,7 +4,7 @@ import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
 import { uuidV7Base58 } from '~/lib'
 import { generateStructured } from '~/lib/ai'
-import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
+import { aiErrorToMessage, extractAICause, logAIError } from '~/lib/ai/errors'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
 import { formFieldSchema } from '~/lib/validation/form-plan'
 import { ensure } from '~/utils'
@@ -89,70 +89,73 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   'use server'
   const userId = await requireUserId()
   const { conversationId, turnId, value } = safeParseOrThrow(answerQuestionSchema, raw, 'conv:answer')
+  // Use a transaction so that if AI generation/validation fails,
+  // we roll back the turn update and allow retry without leaving the turn answered.
+  return db.transaction(async (tx) => {
+    const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
+    if (!conv)
+      throw new Error('Conversation not found')
+    if (conv.respondentUserId !== userId)
+      throw new Error('Forbidden')
+    if (conv.status !== 'active')
+      throw new Error('Conversation not active')
 
-  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
-  if (!conv)
-    throw new Error('Conversation not found')
-  if (conv.respondentUserId !== userId)
-    throw new Error('Forbidden')
-  if (conv.status !== 'active')
-    throw new Error('Conversation not active')
+    const [turn] = await tx.select().from(Turns).where(eq(Turns.id, turnId))
+    if (!turn)
+      throw new Error('Turn not found')
+    if (turn.conversationId !== conversationId)
+      throw new Error('Invalid turn')
+    if (turn.status !== 'awaiting_answer')
+      throw new Error('Turn already answered')
 
-  const [turn] = await db.select().from(Turns).where(eq(Turns.id, turnId))
-  if (!turn)
-    throw new Error('Turn not found')
-  if (turn.conversationId !== conversationId)
-    throw new Error('Invalid turn')
-  if (turn.status !== 'awaiting_answer')
-    throw new Error('Turn already answered')
+    const answerJson = { value, providedAt: new Date().toISOString() }
+    await tx
+      .update(Turns)
+      .set({ answerJson, status: 'answered', answeredAt: new Date() })
+      .where(eq(Turns.id, turnId))
 
-  const answerJson = { value, providedAt: new Date().toISOString() }
-  await db
-    .update(Turns)
-    .set({ answerJson, status: 'answered', answeredAt: new Date() })
-    .where(eq(Turns.id, turnId))
+    // Determine next step with stopping criteria
+    const answeredIndex = turn.index
+    const nextIndex = answeredIndex + 1
 
-  // Determine next step with stopping criteria
-  const answeredIndex = turn.index
-  const nextIndex = answeredIndex + 1
+    // Load form to read plan/stopping
+    const [form] = await tx.select().from(Forms).where(eq(Forms.id, conv.formId))
+    if (!form)
+      throw new Error('Form not found')
 
-  // Load form to read plan/stopping
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
-  if (!form)
-    throw new Error('Form not found')
+    const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
 
-  const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
+    // If asking one more would exceed hard limit, complete now
+    if (shouldHardStop(nextIndex)) {
+      const [updated] = await tx
+        .update(Conversations)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
+        } as any)
+        .where(eq(Conversations.id, conversationId))
+        .returning()
+      return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
+    }
 
-  // If asking one more would exceed hard limit, complete now
-  if (shouldHardStop(nextIndex)) {
-    const [updated] = await db
-      .update(Conversations)
-      .set({
-        status: 'completed',
-        completedAt: new Date(),
-        clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
-      } as any)
-      .where(eq(Conversations.id, conversationId))
-      .returning()
-    return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
-  }
+    // Otherwise, ask the LLM for the next question or end signal
+    const followUp = await createFollowUpTurnOrEndTx(tx, conversationId, nextIndex)
+    if (followUp.kind === 'end') {
+      const [updated] = await tx
+        .update(Conversations)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: followUp.reason, atTurn: answeredIndex, modelId: followUp.modelId }),
+        } as any)
+        .where(eq(Conversations.id, conversationId))
+        .returning()
+      return { completed: Boolean(updated), reason: followUp.reason }
+    }
 
-  // Otherwise, ask the LLM for the next question or end signal
-  const followUp = await createFollowUpTurnOrEnd(conversationId, nextIndex)
-  if (followUp.kind === 'end') {
-    const [updated] = await db
-      .update(Conversations)
-      .set({
-        status: 'completed',
-        completedAt: new Date(),
-        clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: followUp.reason, atTurn: answeredIndex, modelId: followUp.modelId }),
-      } as any)
-      .where(eq(Conversations.id, conversationId))
-      .returning()
-    return { completed: Boolean(updated), reason: followUp.reason }
-  }
-
-  return { nextTurn: followUp.turn }
+    return { nextTurn: followUp.turn }
+  })
 }, 'conv:answer')
 
 const completeSchema = z.object({ conversationId: idSchema })
@@ -346,35 +349,33 @@ function mergeEndMeta(prev: any, meta: { reason: EndReason, atTurn: number, mode
   return { ...base, end: { ...(base.end || {}), ...meta } }
 }
 
-async function createFollowUpTurnOrEnd(conversationId: string, indexValue: number): Promise<
+// Same as createFollowUpTurnOrEnd but scoped to a transaction
+async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexValue: number): Promise<
   | { kind: 'turn', turn: any }
   | { kind: 'end', reason: Exclude<EndReason, 'hard_limit'>, modelId?: string }
 > {
-  // Gather context: conversation, form (incl. AI config + plan), past Q/A turns
-  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
 
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  const [form] = await tx.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
     throw new Error('Form not found')
 
-  // Load prior turns to build history
-  const priorTurns = await db
+  const priorTurns = await tx
     .select()
     .from(Turns)
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
   const history = priorTurns
-    .filter(t => t.index <= indexValue - 1)
-    .map(t => ({
+    .filter((t: any) => t.index <= indexValue - 1)
+    .map((t: any) => ({
       index: t.index,
       question: t.questionJson ? (t.questionJson as any) : undefined,
       answer: t.answerJson ? (t.answerJson as any).value : undefined,
     }))
 
-  // Require LLM configuration
   const provider = (form as any).aiConfigJson?.provider as string | undefined
   const modelId = (form as any).aiConfigJson?.modelId as string | undefined
   const prompt = (form as any).aiConfigJson?.prompt as string | undefined
@@ -384,7 +385,6 @@ async function createFollowUpTurnOrEnd(conversationId: string, indexValue: numbe
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
 
-  // Prepare messages for the LLM
   const system = `You are an expert adaptive survey designer. Given the form's goal and a transcript of previous Q/A, craft the single next best question.
 You may also decide to end the form early if you have enough information or the respondent is clearly not engaging.`
 
@@ -400,7 +400,7 @@ You may also decide to end the form early if you have enough information or the 
       allowed: Boolean(stopping.llmMayEnd),
       reasons: stopping.endReasons,
     },
-    history: history.map(h => ({
+    history: history.map((h: any) => ({
       index: h.index,
       question: h.question ? { label: (h.question as any).label, type: (h.question as any).type } : undefined,
       answer: h.answer,
@@ -425,24 +425,25 @@ You may also decide to end the form early if you have enough information or the 
   }
   catch (err) {
     logAIError(err, 'conv:generateFollowUp')
-    throw new Error(aiErrorToMessage(err))
+    const cause = extractAICause(err)
+    const code = (typeof cause === 'string' && cause.toLowerCase().includes('validation')) ? 'VALIDATION_FAILED' : 'AI_ERROR'
+    const payload = { code, message: aiErrorToMessage(err), cause }
+    throw new Error(JSON.stringify(payload))
   }
 
   const obj: any = resp.object
 
-  // If the model returned an object with an "__end__" marker or a minimal end shape (end.reason), treat as end
   if (stopping.llmMayEnd && obj && typeof obj === 'object' && (obj.end?.reason === 'enough_info' || obj.end?.reason === 'trolling')) {
     if (Array.isArray(stopping.endReasons) && stopping.endReasons.includes(obj.end.reason))
       return { kind: 'end', reason: obj.end.reason, modelId }
   }
 
-  // Otherwise, treat as question and insert
   const question = {
     ...obj,
     id: uuidV7Base58(),
   }
 
-  const [created] = await db.insert(Turns).values({
+  const [created] = await tx.insert(Turns).values({
     conversationId,
     index: indexValue,
     questionJson: question as any,

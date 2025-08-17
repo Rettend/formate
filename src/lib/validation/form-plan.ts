@@ -11,22 +11,22 @@ export const fieldTypeSchema = z.enum([
 ])
 
 export const optionSchema = z.object({
-  id: z.string().min(1).max(48),
-  label: z.string().min(1).max(120),
+  id: z.string().min(1),
+  label: z.string().min(1),
 })
 
 export const fieldValidationSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
-  regex: z.string().max(256).optional(),
+  regex: z.string().optional(),
 }).partial()
 
 export const formFieldSchema = z.object({
-  id: z.string().min(1).max(48),
-  label: z.string().min(1).max(120),
+  id: z.string().min(1),
+  label: z.string().min(1),
   type: fieldTypeSchema,
   required: z.boolean().default(true),
-  helpText: z.string().max(200).optional(),
+  helpText: z.string().optional(),
   options: z.array(optionSchema).max(10).optional(),
   validation: fieldValidationSchema.optional(),
 })

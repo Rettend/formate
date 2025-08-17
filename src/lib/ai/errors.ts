@@ -61,7 +61,9 @@ export function logAIError(error: unknown, context?: string) {
       code: e.code ?? undefined,
       statusCode: e.statusCode ?? e.status ?? undefined,
     }
-    const causeMsg = typeof e.cause?.message === 'string' ? e.cause.message : undefined
+    const causeMsg = typeof e.cause?.message === 'string'
+      ? e.cause.message
+      : (typeof e.cause === 'string' ? e.cause : undefined)
     if (causeMsg)
       details.cause = causeMsg
 
@@ -72,4 +74,21 @@ export function logAIError(error: unknown, context?: string) {
     return
   }
   console.error(prefix, error)
+}
+
+/** Extract a useful cause string from an AI SDK error if available. */
+export function extractAICause(error: unknown): string | undefined {
+  try {
+    if (!error || typeof error !== 'object')
+      return undefined
+    const e = error as any
+    if (typeof e.cause?.message === 'string')
+      return e.cause.message as string
+    if (typeof e.cause === 'string')
+      return e.cause as string
+    if (typeof e.responseBody === 'string')
+      return e.responseBody as string
+  }
+  catch {}
+  return undefined
 }
