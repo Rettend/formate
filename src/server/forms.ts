@@ -19,6 +19,7 @@ export interface ListFormsOutputItem {
   title: string
   status: string
   updatedAt: Date
+  slug?: string
 }
 
 const listFormsSchema = z.object({
@@ -48,7 +49,7 @@ export const listForms = query(async (raw: ListFormsInput = {}) => {
     conditions.push(like(Forms.title, `%${input.q}%`))
 
   const items = await db
-    .select({ id: Forms.id, title: Forms.title, status: Forms.status, updatedAt: Forms.updatedAt })
+    .select({ id: Forms.id, title: Forms.title, status: Forms.status, updatedAt: Forms.updatedAt, slug: Forms.slug })
     .from(Forms)
     .where(and(...conditions))
     .orderBy(desc(Forms.updatedAt))
@@ -76,11 +77,10 @@ export const getForm = query(async (raw: { formId: string }) => {
 
 const createFormSchema = z.object({
   title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
-  description: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
   slug: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
 })
 
-export const createForm = action(async (raw: { title?: string, description?: string, slug?: string }) => {
+export const createForm = action(async (raw: { title?: string, slug?: string }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -101,7 +101,6 @@ export const createForm = action(async (raw: { title?: string, description?: str
   const [created] = await db.insert(Forms).values({
     ownerUserId: session.user.id,
     title: input.title?.trim() || 'Untitled Form',
-    description: input.description?.trim(),
     slug: slugSanitized,
   }).returning()
 
@@ -112,11 +111,10 @@ const updateFormSchema = z.object({
   formId: idSchema,
   patch: z.object({
     title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
-    description: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
   }),
 })
 
-export const updateForm = action(async (raw: { formId: string, patch: { title?: string, description?: string } }) => {
+export const updateForm = action(async (raw: { formId: string, patch: { title?: string } }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -127,8 +125,6 @@ export const updateForm = action(async (raw: { formId: string, patch: { title?: 
   const updates: Partial<typeof Forms.$inferInsert> = {}
   if (typeof patch.title === 'string')
     updates.title = patch.title.trim()
-  if (typeof patch.description === 'string')
-    updates.description = patch.description.trim()
   updates.updatedAt = new Date()
 
   const [updated] = await db
@@ -191,14 +187,14 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
   const { slug } = safeParseOrThrow(getPublicBySlugSchema, raw, 'forms:getPublicBySlug')
   // First try by slug (preferred)
   let rows = await db
-    .select({ id: Forms.id, title: Forms.title, description: Forms.description, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+    .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
     .from(Forms)
     .where(and(eq(Forms.slug, slug), eq(Forms.status, 'published')))
   let form = rows[0]
   // Fallback: if the provided slug looks like an id, try by id — allows /r/:id during transition
   if (!form && /^[\w-]{16,24}$/u.test(slug)) {
     rows = await db
-      .select({ id: Forms.id, title: Forms.title, description: Forms.description, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+      .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
       .from(Forms)
       .where(and(eq(Forms.id, slug), eq(Forms.status, 'published')))
     form = rows[0]
@@ -273,13 +269,11 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   const { plan } = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
   const safePlan = formPlanSchema.parse(plan)
 
-  const [updated] = await db
+  await db
     .update(Forms)
-    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId }, settingsJson: safePlan, updatedAt: new Date() })
+    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId }, settingsJson: safePlan, seedQuestionJson: safePlan.seed, updatedAt: new Date() })
     .where(eq(Forms.id, input.formId))
-    .returning()
-
-  return { plan: safePlan, form: updated }
+  return { plan: safePlan }
 }, 'forms:planWithAI')
 
 const testRunSchema = z.object({
@@ -344,10 +338,10 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
     throw new Error('No plan applied yet')
 
   const plan = formPlanSchema.parse(form.settingsJson)
-  if (input.index < 0 || input.index >= plan.fields.length)
+  if (input.index !== 0)
     throw new Error('Index out of range')
 
   const { simulateTestStep } = await import('~/lib/ai/form-planner')
   const step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
-  return { step, total: plan.fields.length }
+  return { step, total: 1 }
 }, 'forms:testStep')

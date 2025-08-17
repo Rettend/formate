@@ -377,7 +377,7 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
           <div class="mb-2 flex items-center justify-between">
             <h3 class="font-medium">Plan output</h3>
             <Show when={lastPlan() || plan()}>
-              <span class="text-xs text-muted-foreground">{(lastPlan() ?? plan()) ? `${(lastPlan() ?? plan())!.fields.length} field${((lastPlan() ?? plan())!.fields.length === 1) ? '' : 's'}` : ''}</span>
+              <span class="text-xs text-muted-foreground">1 field</span>
             </Show>
           </div>
           <Show when={lastPlan() || plan()} fallback={<p class="text-sm text-muted-foreground">No plan yet. Generate one above.</p>}>

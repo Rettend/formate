@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 // Base64url-encoded 16-byte ID (uuid v7 -> 22 chars after base64url), permissive to any base64url
+// TODO: we changed ids to base58, is this ok?
 export const idSchema = z
   .string()
   .regex(/^[\w-]{16,24}$/u, 'Invalid id format')

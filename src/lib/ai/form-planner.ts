@@ -5,15 +5,15 @@ import { generateStructured } from '~/lib/ai'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 
 const SYSTEM_INSTRUCTIONS = `You are an expert survey/form designer.
-Design concise, high-completion forms. Use clear, neutral, and inclusive language.
-Follow constraints strictly. Return only the required JSON object and no extra text.`
+Write a form summary, intro and outro.
+Design a concise seed question, this will be the first, warm-up question for the form.`
 
 function buildPlanningMessages(prompt: string): ModelMessage[] {
   return [
     { role: 'system', content: SYSTEM_INSTRUCTIONS },
     {
       role: 'user',
-      content: `Goal & constraints (single prompt):\n${prompt}\n\nOutput a JSON object matching the provided schema strictly. Do not include any commentary.`,
+      content: `Goal & constraints (single prompt):\n${prompt}\n\nOutput a JSON object matching the provided schema strictly.`,
     },
   ]
 }
@@ -45,10 +45,10 @@ export async function simulateTestRun(options: {
   apiKey?: string
 }): Promise<{ transcript: TestRunStep[], tokensIn?: number, tokensOut?: number }> {
   const steps: TestRunStep[] = []
-  const max = Math.min(options.maxSteps ?? options.plan.fields.length, options.plan.fields.length)
+  const f = options.plan.seed
+  const max = Math.min(options.maxSteps ?? 1, 1)
 
   for (let i = 0; i < max; i++) {
-    const f = options.plan.fields[i]
     const q = `${f.label}${f.required ? ' (required)' : ''}`
     const answerSchema = z.object({ answer: z.union([z.string(), z.number(), z.boolean()]) })
     const { object } = await generateStructured({
@@ -79,9 +79,9 @@ export async function simulateTestStep(options: {
   apiKey?: string
 }): Promise<TestRunStep> {
   const i = options.index
-  if (i < 0 || i >= options.plan.fields.length)
+  if (i !== 0)
     throw new Error('Index out of range')
-  const f: FormField = options.plan.fields[i]
+  const f: FormField = options.plan.seed
   const q = `${f.label}${f.required ? ' (required)' : ''}`
   const answerSchema = z.object({ answer: z.union([z.string(), z.number(), z.boolean()]) })
   const { object } = await generateStructured({

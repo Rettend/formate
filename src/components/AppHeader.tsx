@@ -9,6 +9,7 @@ import { useUIStore } from '~/stores/ui'
 export function AppHeader() {
   const { setUI } = useUIStore()
   const auth = useAuth()
+  const redirectTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined
 
   return (
     <header class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -24,10 +25,25 @@ export function AppHeader() {
             when={auth.session().user}
             fallback={(
               <div class="hidden items-center gap-2 sm:flex">
-                <Button variant="outline" size="sm" onClick={() => auth.signIn('github')}>
-                  <span class="i-ph:sign-in-bold" />
-                  <span>Sign in</span>
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button variant="outline" size="sm" class="gap-2">
+                      <span class="i-ph:sign-in-bold" />
+                      <span>Sign in</span>
+                      <span class="i-ph:caret-down-bold size-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => auth.signIn('github', { redirectTo })}>
+                      <span class="i-ph:github-logo-bold" />
+                      <span>GitHub</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => auth.signIn('google', { redirectTo })}>
+                      <span class="i-ph:google-logo-bold" />
+                      <span>Google</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           >

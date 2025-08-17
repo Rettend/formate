@@ -2,12 +2,13 @@ import type { Provider } from '~/lib/auth'
 import { A } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
+import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { useAuth } from '~/lib/auth'
 import { useUIStore } from '~/stores/ui'
 
 export default function Home() {
-  const { ui, setUI } = useUIStore()
+  const { setUI } = useUIStore()
   const auth = useAuth()
 
   const linkedProviders = createMemo<Provider[]>(() => {
@@ -28,9 +29,6 @@ export default function Home() {
         </div>
         <div class="flex items-center gap-2">
           <ModeToggle set={mode => setUI('mode', mode)} />
-          <span class="hidden rounded bg-muted px-2 py-1 text-xs font-medium sm:inline">
-            {ui.mode.charAt(0).toUpperCase() + ui.mode.slice(1)}
-          </span>
         </div>
       </header>
 
@@ -39,37 +37,7 @@ export default function Home() {
         <div class="max-w-sm w-full">
           <Show
             when={auth.session().user}
-            fallback={(
-              <div class="border rounded-lg bg-card p-6 text-card-foreground shadow-sm space-y-6">
-                <div class="space-y-1">
-                  <h1 class="text-xl font-semibold tracking-tight">Welcome</h1>
-                  <p class="text-sm text-muted-foreground">Sign in to continue</p>
-                </div>
-                <div class="space-y-2">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    class="w-full justify-start gap-3"
-                    onClick={() => auth.signIn('github')}
-                  >
-                    <span class="i-ph:github-logo size-5" />
-                    <span class="font-medium">Continue with GitHub</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="w-full justify-start gap-3"
-                    onClick={() => auth.signIn('google')}
-                  >
-                    <span class="i-ph:google-logo-bold size-5" />
-                    <span class="font-medium">Continue with Google</span>
-                  </Button>
-                </div>
-                <p class="text-center text-[10px] text-muted-foreground leading-relaxed">
-                  By continuing you agree to our Terms & Privacy Policy.
-                </p>
-              </div>
-            )}
+            fallback={<SignInCard />}
           >
             <div class="border rounded-lg bg-card p-6 text-card-foreground shadow-sm space-y-6">
               {/* User header */}

@@ -8,15 +8,9 @@ export interface RespondentState {
   byForm: Record<string, {
     byUser: Record<string, {
       conversationId?: string
-      currentIndex: number
-      answers: Record<string, unknown>
-      startedAt: string
-      version: number
     }>
   }>
 }
-
-const DEFAULT_VERSION = 1
 
 const Ctx = createContext<[Store<RespondentState>, SetStoreFunction<RespondentState>]>()
 
@@ -48,9 +42,5 @@ export function initProgress(set: SetStoreFunction<RespondentState>, formId: str
   set('byForm', formId, 'byUser', prev => prev ?? ({}))
   set('byForm', formId, 'byUser', userId, prev => prev ?? ({
     conversationId: undefined,
-    currentIndex: 0,
-    answers: {},
-    startedAt: new Date().toISOString(),
-    version: DEFAULT_VERSION,
   }))
 }

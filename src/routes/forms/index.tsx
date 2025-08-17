@@ -44,10 +44,9 @@ export default function FormsList() {
     await revalidate([listForms.key])
   }
 
-  const handleShare = async (id: string) => {
+  const handleShare = async (id: string, slug?: string | null) => {
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    // Temporary: share-by-id until slug/public route exists
-    const url = `${base}/r/${id}`
+    const url = `${base}/r/${slug || id}`
     try {
       await navigator.clipboard.writeText(url)
     }
@@ -133,6 +132,17 @@ export default function FormsList() {
                         <span class="i-ph:caret-right-bold size-4" />
                       </Button>
                     </A>
+                    {/* View (respondent) */}
+                    <A href={`/r/${item.slug || item.id}`} title="View" class="inline-flex">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
+                        aria-label="View"
+                      >
+                        <span class="i-ph:eye-bold size-4" />
+                      </Button>
+                    </A>
                     {/* Publish/Unpublish */}
                     <Button
                       variant="ghost"
@@ -152,7 +162,7 @@ export default function FormsList() {
                       class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
                       title="Copy share link"
                       aria-label="Copy share link"
-                      onClick={() => handleShare(item.id)}
+                      onClick={() => handleShare(item.id, item.slug)}
                     >
                       <span class="i-ph:link-bold size-4" />
                     </Button>

@@ -9,7 +9,6 @@ export default function NewForm() {
   const navigate = useNavigate()
   const create = useAction(createForm)
   const [title, setTitle] = createSignal('')
-  const [description, setDescription] = createSignal('')
   const [submitting, setSubmitting] = createSignal(false)
 
   const handleCreate = async () => {
@@ -20,7 +19,7 @@ export default function NewForm() {
     }
     try {
       setSubmitting(true)
-      const created = await create({ title: t, description: description().trim() || undefined })
+      const created = await create({ title: t })
       if (created?.id)
         navigate(`/forms/${created.id}`)
       else
@@ -51,19 +50,6 @@ export default function NewForm() {
               class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none ring-0 focus-visible:ring-2 focus-visible:ring-primary/40"
             />
             <p class="text-xs text-muted-foreground">A short, descriptive name for your form.</p>
-          </div>
-
-          <div class="space-y-2">
-            <label for="description" class="text-sm font-medium">Description</label>
-            <textarea
-              id="description"
-              value={description()}
-              onInput={e => setDescription(e.currentTarget.value)}
-              rows={4}
-              placeholder="Optional: what is this form about?"
-              class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none ring-0 focus-visible:ring-2 focus-visible:ring-primary/40"
-            />
-            <p class="text-xs text-muted-foreground">Optional. Shown to respondents and in your dashboard.</p>
           </div>
 
           <div class="flex gap-2">

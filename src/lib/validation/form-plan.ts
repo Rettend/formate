@@ -57,8 +57,7 @@ export const formPlanSchema = z.object({
   summary: z.string().min(1).max(800),
   intro: z.string().max(300).optional(),
   outro: z.string().max(300).optional(),
-  fields: z.array(formFieldSchema).min(1).max(20),
-  branching: z.array(branchRuleSchema).max(50).optional(),
+  seed: formFieldSchema,
 })
 
 export type FormPlan = z.infer<typeof formPlanSchema>

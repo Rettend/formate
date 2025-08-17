@@ -1,4 +1,4 @@
-import type { FormPlan, TestRunStep } from '~/lib/validation/form-plan'
+import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { uuidV7Base58 } from '~/lib/index'
 
@@ -41,9 +41,9 @@ export const Forms = sqliteTable('forms', {
   id: text().primaryKey().$defaultFn(() => uuidV7Base58()),
   ownerUserId: text().notNull().references(() => Users.id, { onDelete: 'cascade' }),
   title: text().notNull(),
-  description: text(),
   slug: text(),
   aiConfigJson: text({ mode: 'json' }).$type<{ prompt: string, provider: string, modelId: string }>(),
+  seedQuestionJson: text({ mode: 'json' }).$type<FormField>(),
   settingsJson: text({ mode: 'json' }).$type<FormPlan>(),
   status: text().notNull().default('draft'),
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -91,19 +91,19 @@ export const Conversations = sqliteTable('conversations', {
 export type Conversation = typeof Conversations.$inferSelect
 export type ConversationNew = typeof Conversations.$inferInsert
 
-export const Messages = sqliteTable('messages', {
+// Turns capture each Q/A step with the exact question snapshot next to the answer
+export const Turns = sqliteTable('turns', {
   id: text().primaryKey().$defaultFn(() => uuidV7Base58()),
   conversationId: text().notNull().references(() => Conversations.id, { onDelete: 'cascade' }),
-  role: text().notNull(), // 'system' | 'user' | 'ai'
-  contentText: text().notNull(),
-  contentJson: text({ mode: 'json' }).$type<Record<string, unknown>>(),
-  tokensIn: integer().default(0),
-  tokensOut: integer().default(0),
-  latencyMs: integer().default(0),
+  index: integer().notNull(),
+  questionJson: text({ mode: 'json' }).$type<FormField>().notNull(),
+  answerJson: text({ mode: 'json' }).$type<{ value: unknown, providedAt: string }>(),
+  status: text().notNull().default('awaiting_answer'), // 'awaiting_answer' | 'answered'
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+  answeredAt: integer({ mode: 'timestamp' }),
 }, t => [
-  index('messages_conversation_created_idx').on(t.conversationId, t.createdAt),
+  index('turns_conversation_index_idx').on(t.conversationId, t.index),
 ])
 
-export type Message = typeof Messages.$inferSelect
-export type MessageNew = typeof Messages.$inferInsert
+export type Turn = typeof Turns.$inferSelect
+export type TurnNew = typeof Turns.$inferInsert
