@@ -462,3 +462,30 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
     throw new Error('Update failed')
   return { ok: true }
 }, 'forms:saveStopping')
+
+// Access mode: whether respondents may complete via OAuth sign-in in addition to invites
+const accessSchema = z.object({ allowOAuth: z.boolean() })
+
+export const saveFormAccess = action(async (raw: { formId: string, access: z.infer<typeof accessSchema> }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(z.object({ formId: idSchema, access: accessSchema }), raw, 'forms:saveAccess')
+
+  const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!form)
+    throw new Error('Not found')
+
+  const existing = (form as any).settingsJson ?? {}
+  const next = { ...existing, access: { ...(existing.access || {}), allowOAuth: Boolean(input.access.allowOAuth) } }
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ settingsJson: next as any, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning({ id: Forms.id })
+  return { ok: Boolean(updated) }
+}, 'forms:saveAccess')

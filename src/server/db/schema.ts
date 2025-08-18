@@ -77,15 +77,18 @@ export type FormTestRunNew = typeof FormTestRuns.$inferInsert
 export const Conversations = sqliteTable('conversations', {
   id: text().primaryKey().$defaultFn(() => uuidV7Base58()),
   formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
-  respondentUserId: text().notNull().references(() => Users.id, { onDelete: 'cascade' }),
+  respondentUserId: text().references(() => Users.id, { onDelete: 'cascade' }),
+  inviteJti: text(),
   status: text().notNull().default('active'),
   startedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   completedAt: integer({ mode: 'timestamp' }),
   clientMetaJson: text({ mode: 'json' }).$type<Record<string, unknown>>(),
 }, t => [
   uniqueIndex('conversations_form_user_unique').on(t.formId, t.respondentUserId),
+  uniqueIndex('conversations_form_invite_unique').on(t.formId, t.inviteJti),
   index('conversations_form_idx').on(t.formId),
   index('conversations_user_idx').on(t.respondentUserId),
+  index('conversations_invite_idx').on(t.inviteJti),
   index('conversations_status_idx').on(t.status),
 ])
 
@@ -108,3 +111,15 @@ export const Turns = sqliteTable('turns', {
 
 export type Turn = typeof Turns.$inferSelect
 export type TurnNew = typeof Turns.$inferInsert
+
+export const UsedInviteTokens = sqliteTable('used_invite_tokens', {
+  jti: text().primaryKey(),
+  formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
+  usedByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
+  usedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, t => [
+  index('used_invites_form_idx').on(t.formId),
+])
+
+export type UsedInviteToken = typeof UsedInviteTokens.$inferSelect
+export type UsedInviteTokenNew = typeof UsedInviteTokens.$inferInsert

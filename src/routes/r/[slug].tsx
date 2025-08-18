@@ -9,6 +9,7 @@ import { Skeleton } from '~/components/ui/skeleton'
 import { useAuth } from '~/lib/auth'
 import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
+import { redeemInvite } from '~/server/invites'
 import { initProgress, useRespondentStore } from '~/stores/respondent'
 
 export const route = {
@@ -28,12 +29,36 @@ export default function Respondent() {
   const answer = useAction(answerQuestion)
   const rewind = useAction(rewindOneStep)
   const reset = useAction(resetConversation)
+  const redeem = useAction(redeemInvite)
 
-  // Namespaced state within store
-  const userId = createMemo(() => auth.session().user?.id ?? 'anon')
+  // Per-tab anonymous identity (sessionStorage)
+  const getSessionAnonId = () => {
+    if (typeof window === 'undefined')
+      return 'anon'
+    try {
+      const k = 'respondent_session_id'
+      let v = window.sessionStorage.getItem(k)
+      if (!v) {
+        v = (window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
+        window.sessionStorage.setItem(k, v)
+      }
+      return v
+    }
+    catch {
+      return 'anon'
+    }
+  }
+
+  const userId = createMemo(() => auth.session().user?.id ?? getSessionAnonId())
   const formId = createMemo(() => form()?.id)
   const progress = createMemo(() => store.byForm[formId() ?? '']?.byUser?.[userId()] ?? undefined)
   const isOwner = createMemo(() => auth.session().user?.id && form()?.ownerUserId && auth.session().user?.id === form()?.ownerUserId)
+
+  const [loading, setLoading] = createSignal(false)
+  const [autoStartTriggered, setAutoStartTriggered] = createSignal(false)
+  const [redeemed, setRedeemed] = createSignal(false)
+  const [redeemStarted, setRedeemStarted] = createSignal(false)
+  const [inviteInput, setInviteInput] = createSignal('')
 
   // Turns keyed by conversationId
   const turnsResult = createAsync(async () => {
@@ -42,25 +67,24 @@ export default function Respondent() {
       return { items: [] as Array<{ id: string, index: number, status: string, questionJson: any, answerJson?: any }> }
     return listTurns({ conversationId: convId })
   })
-  const [loading, setLoading] = createSignal(false)
-  const [autoStartTriggered, setAutoStartTriggered] = createSignal(false)
+
+  const turns = createMemo(() => turnsResult()?.items ?? [])
+  const activeTurn = createMemo(() => turns().find(t => t.status === 'awaiting_answer'))
+  const canSubmit = createMemo(() => Boolean(progress()?.conversationId && activeTurn()))
 
   const handleStart = async () => {
-    // Start/continue conversation for an authenticated user
     const f = form()
-    const user = auth.session().user
     if (!f) {
       toast.error('Form not found or not public')
       return
     }
-    if (!user)
-      return
     setLoading(true)
     try {
       const conv = await start({ formId: f.id })
       if (conv?.id) {
-        initProgress(setStore, f.id, user.id)
-        setStore('byForm', f.id, 'byUser', user.id, 'conversationId', conv.id)
+        const key = userId()
+        initProgress(setStore, f.id, key)
+        setStore('byForm', f.id, 'byUser', key, 'conversationId', conv.id)
         await revalidate([listTurns.key])
       }
     }
@@ -73,27 +97,65 @@ export default function Respondent() {
     }
   }
 
-  // Auto-start: when user is authenticated and there's no conversation yet
+  // Single orchestrating effect: redeem invite token (if present) and/or auto-start
   createEffect(() => {
-    const user = auth.session().user
     const f = form()
-    if (!user || !f)
+    if (!f)
       return
-    if (progress()?.conversationId)
+
+    const href = typeof window !== 'undefined' ? window.location.href : `https://x/${slug()}`
+    let token: string | null = null
+    try {
+      token = new URL(href).searchParams.get('t')
+    }
+    catch {
+      // ignore invalid URL structure
+    }
+
+    if (token && !redeemStarted() && !redeemed()) {
+      // Ensure store path exists, then clear any local conversation for this tab before redeeming
+      initProgress(setStore, f.id, userId())
+      setStore('byForm', f.id, 'byUser', userId(), 'conversationId', undefined)
+      setRedeemStarted(true)
+      ;(async () => {
+        setLoading(true)
+        try {
+          await redeem({ token })
+          setRedeemed(true)
+          if (typeof window !== 'undefined') {
+            const clean = new URL(window.location.href)
+            clean.searchParams.delete('t')
+            window.history.replaceState({}, '', clean.toString())
+          }
+          toast.success('Invite accepted. You can start now.')
+          setAutoStartTriggered(true)
+          await handleStart()
+        }
+        catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          if (typeof msg === 'string' && msg.toLowerCase().includes('already used')) {
+            setRedeemed(true)
+            setAutoStartTriggered(true)
+            await handleStart()
+            toast.success('Invite accepted. You can start now.')
+          }
+          else {
+            toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
+          }
+        }
+        finally {
+          setLoading(false)
+        }
+      })()
       return
-    if (autoStartTriggered())
-      return
-    setAutoStartTriggered(true)
-    queueMicrotask(() => {
+    }
+
+    // No token: start automatically for signed-in respondents
+    if (!token && Boolean(auth.session().user) && !progress()?.conversationId && !autoStartTriggered()) {
+      setAutoStartTriggered(true)
       void handleStart()
-    })
+    }
   })
-
-  // Determine the active turn (awaiting answer)
-  const turns = createMemo(() => turnsResult()?.items ?? [])
-  const activeTurn = createMemo(() => turns().find(t => t.status === 'awaiting_answer'))
-
-  const canSubmit = createMemo(() => Boolean(progress()?.conversationId && activeTurn()))
 
   const handleRewind = async () => {
     const convId = progress()?.conversationId
@@ -130,16 +192,13 @@ export default function Respondent() {
     setLoading(true)
     try {
       await answer({ conversationId: convId, turnId: turn.id, value })
-      // Refresh turns from server
       await revalidate([listTurns.key])
-      // Focus the next input when present
       queueMicrotask(() => {
         const next = document.querySelector('[data-active-turn] textarea, [data-active-turn] input') as HTMLInputElement | HTMLTextAreaElement | null
         next?.focus()
       })
     }
     catch (e) {
-      // Prefer structured AI error payloads from server (JSON in error.message)
       if (e instanceof Error && typeof e.message === 'string') {
         try {
           const parsed = JSON.parse(e.message)
@@ -152,7 +211,6 @@ export default function Respondent() {
               toast.error('Validation failed')
               return
             }
-            // Fallback to provided message
             if (typeof parsed.message === 'string' && parsed.message.length > 0) {
               toast.error(parsed.message)
               return
@@ -188,6 +246,90 @@ export default function Respondent() {
     }
     finally {
       setLoading(false)
+    }
+  }
+
+  // Extracted handler to avoid async function directly in JSX tracked scope
+  const handleManualRedeemClick = async () => {
+    const el = document.getElementById('invite-token') as HTMLInputElement | null
+    const raw = (el?.value ?? inviteInput()).trim()
+    const t = extractTokenFromText(raw)
+    if (!t) {
+      toast.error('Paste the token or a full link containing ?t=')
+      return
+    }
+    if (redeemStarted())
+      return
+    setRedeemStarted(true)
+    setLoading(true)
+    try {
+      await redeem({ token: t })
+      setRedeemed(true)
+      // Clear any stale local conversation and ensure structure
+      const f = form()
+      if (f) {
+        initProgress(setStore, f.id, userId())
+        setStore('byForm', f.id, 'byUser', userId(), 'conversationId', undefined)
+      }
+      if (el)
+        el.value = ''
+      setInviteInput('')
+      toast.success('Invite accepted. You can start now.')
+      await handleStart()
+    }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (typeof msg === 'string' && msg.toLowerCase().includes('already used')) {
+        setRedeemed(true)
+        if (el)
+          el.value = ''
+        setInviteInput('')
+        toast.success('Invite accepted. You can start now.')
+        await handleStart()
+      }
+      else {
+        toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
+      }
+    }
+    finally {
+      setLoading(false)
+    }
+  }
+
+  function extractTokenFromText(text: string): string | null {
+    const s = (text || '').trim()
+    if (!s)
+      return null
+    // Try URL parsing
+    try {
+      const url = new URL(s)
+      const tok = url.searchParams.get('t')
+      if (tok && tok.length > 10)
+        return tok
+    }
+    catch {}
+    // Try query substring
+    if (s.includes('t=')) {
+      try {
+        const q = s.split('?')[1] || s
+        const p = new URLSearchParams(q)
+        const tok = p.get('t')
+        if (tok && tok.length > 10)
+          return tok
+      }
+      catch {}
+    }
+    // Fallback: JWT-ish
+    if (s.split('.').length === 3 && s.length > 20)
+      return s
+    return null
+  }
+
+  function onInviteKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (!redeemStarted())
+        void handleManualRedeemClick()
     }
   }
 
@@ -238,10 +380,40 @@ export default function Respondent() {
               </Show>
             </div>
 
-            {/* Auth gate: Logged out -> provider card; Logged in -> no card */}
-            <Show when={!auth.session().user}>
+            {/* Auth gate: show sign-in only if form allows OAuth */}
+            <Show when={!auth.session().user && Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true)}>
               <div class="mx-auto max-w-sm">
                 <SignInCard redirectTo={typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : `/r/${slug()}`} />
+              </div>
+            </Show>
+
+            {/* Invite fallback: if OAuth disabled, show invite code input (hide after redeem) */}
+            <Show when={!auth.session().user && !(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true) && !redeemed() && !progress()?.conversationId}>
+              <div class="mx-auto max-w-sm border rounded-md bg-card p-4 text-card-foreground">
+                <div class="text-sm font-medium">Enter invite code</div>
+                <p class="mb-2 text-xs text-muted-foreground">Paste the invite token you received. If you opened the link directly, this step isn’t needed.</p>
+                <div class="flex items-center gap-2">
+                  <input
+                    id="invite-token"
+                    type="text"
+                    value={inviteInput()}
+                    onInput={e => setInviteInput((e.currentTarget as HTMLInputElement).value)}
+                    onKeyDown={e => onInviteKeyDown(e as unknown as KeyboardEvent)}
+                    onBlur={() => {
+                      if (!redeemStarted())
+                        void handleManualRedeemClick()
+                    }}
+                    class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
+                    placeholder="Paste token or full link"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={loading() || redeemStarted()}
+                    onClick={() => { void handleManualRedeemClick() }}
+                  >
+                    Redeem
+                  </Button>
+                </div>
               </div>
             </Show>
 

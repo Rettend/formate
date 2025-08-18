@@ -10,7 +10,7 @@ import { Checkbox } from '~/components/ui/checkbox'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormProviderKey, saveFormStopping, unpublishForm } from '~/server/forms'
+import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormStopping, unpublishForm } from '~/server/forms'
 
 export const route = {
   preload({ params }) {
@@ -31,11 +31,13 @@ export default function FormDetail() {
   const saveStopping = useAction(saveFormStopping)
   const saveKey = useAction(saveFormProviderKey)
   const clearKey = useAction(clearFormProviderKey)
+  const saveAccess = useAction(saveFormAccess)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
   const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
   const [hasStoredKey, setHasStoredKey] = createSignal(false)
+  const [tab, setTab] = createSignal<'stopping' | 'access'>('stopping')
 
   const getDefaultStoppingFromForm = () => {
     const s: any = (form() as any)?.settingsJson?.stopping
@@ -166,10 +168,10 @@ export default function FormDetail() {
                 settingsSlot={(
                   <div>
                     <CollapsibleCard title="Settings" defaultOpen>
-                      <Tabs defaultValue="stopping" class="w-full">
+                      <Tabs value={tab()} onChange={setTab} class="w-full">
                         <TabsList class="grid grid-cols-2 w-full">
                           <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
-                          <TabsTrigger value="access">LLM Access</TabsTrigger>
+                          <TabsTrigger value="access">Access</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="stopping">
@@ -282,7 +284,26 @@ export default function FormDetail() {
 
                         <TabsContent value="access">
                           <div class="p-3">
-                            <h2 class="text-sm font-semibold">API key</h2>
+                            <h2 class="text-sm font-semibold">Respondent Access</h2>
+                            <p class="mb-3 text-sm text-muted-foreground">Choose how respondents can access this form. Invites are always allowed if you generate them. Optionally allow anyone to complete by signing in.</p>
+
+                            <div class="mb-6 flex items-start space-x-2">
+                              <Checkbox
+                                id="allow-oauth-respondents"
+                                checked={Boolean(((f as any).settingsJson as any)?.access?.allowOAuth ?? true)}
+                                onChange={(v) => {
+                                  // Persist into settingsJson.access.allowOAuth
+                                  void saveAccess({ formId: id(), access: { allowOAuth: Boolean(v) } })
+                                    .then(() => revalidate([getForm.key]))
+                                }}
+                              />
+                              <div class="grid gap-1.5 leading-none">
+                                <Label for="allow-oauth-respondents">Allow anyone to complete by signing in</Label>
+                                <p class="text-xs text-muted-foreground">If disabled, respondents must use a single-use invite link. If enabled, either invites or OAuth can be used.</p>
+                              </div>
+                            </div>
+
+                            <h3 class="text-sm font-semibold">Provider API key</h3>
                             <p class="mb-2 text-sm text-muted-foreground">Stored encrypted on the server and used when respondents answer this form. It's never exposed to the respondent's browser.</p>
                             <div>
                               <Show

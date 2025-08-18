@@ -1,6 +1,8 @@
+import process from 'node:process'
 import { action, query } from '@solidjs/router'
 import { and, asc, eq } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
+import { getCookie, setCookie } from 'vinxi/http'
 import { z } from 'zod'
 import { uuidV7Base58 } from '~/lib'
 import { generateStructured } from '~/lib/ai'
@@ -12,35 +14,94 @@ import { decryptSecret } from './crypto'
 import { db } from './db'
 import { Conversations, Forms, Turns } from './db/schema'
 
-async function requireUserId(): Promise<string> {
+interface Identity { userId?: string, inviteJti?: string }
+
+async function getIdentityForForm(formId?: string): Promise<Identity> {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
-  const id = session?.user?.id
-  return ensure(id, 'Unauthorized')
+  const userId = session?.user?.id
+  let inviteJti: string | undefined
+  if (formId) {
+    const cookieName = `form_invite_${formId}`
+    try {
+      const val: any = getCookie(cookieName)
+      if (val) {
+        // New format: cookie value is the raw JTI
+        if (typeof val === 'string' && val.length > 0) {
+          // Attempt JSON parse only if it looks like a JSON object (back-compat)
+          if (val.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(val)
+              if (parsed && typeof parsed === 'object' && typeof (parsed as any).jti === 'string')
+                inviteJti = (parsed as any).jti
+            }
+            catch {}
+          }
+          else {
+            // Guard against previously malformed cookies where value accidentally contained the cookie name
+            if (val === cookieName || val.startsWith('form_invite_')) {
+              // Clear invalid cookie and ignore
+              try {
+                setCookie(cookieName, '', { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', expires: new Date(0) } as any)
+              }
+              catch {}
+              inviteJti = undefined
+            }
+            else {
+              inviteJti = val
+            }
+          }
+        }
+        else if (val && typeof val === 'object' && typeof val.jti === 'string') {
+          // In case some adapter returned an object; be defensive
+          inviteJti = val.jti
+        }
+      }
+    }
+    catch {}
+  }
+  return { userId, inviteJti }
+}
+
+async function requireSomeIdentity(formId?: string): Promise<Identity> {
+  const id = await getIdentityForForm(formId)
+  if (!id.userId && !id.inviteJti)
+    throw new Error('Unauthorized')
+  return id
 }
 
 const formIdSchema = z.object({ formId: idSchema })
 
 export const getOrCreateConversation = action(async (raw: { formId: string }) => {
   'use server'
-  const userId = await requireUserId()
   const { formId } = safeParseOrThrow(formIdSchema, raw, 'conv:getOrCreate')
+  const { userId, inviteJti } = await requireSomeIdentity(formId)
 
   // Ensure form exists and is public+published
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
     throw new Error('Form not found')
   // Allow owner to start a conversation even if not published; non-owners require published
-  const isOwner = form.ownerUserId === userId
+  const isOwner = userId && form.ownerUserId === userId
   if (!isOwner && form.status !== 'published')
     throw new Error('Form is not published')
 
-  // Find existing
-  const existing = await db
-    .select()
-    .from(Conversations)
-    .where(and(eq(Conversations.formId, formId), eq(Conversations.respondentUserId, userId)))
-    .limit(1)
+  // Find existing: prefer invite identity if present to avoid mixing with logged-in owner/user sessions
+  let existing: any[] = []
+  if (inviteJti) {
+    existing = await db
+      .select()
+      .from(Conversations)
+      .where(and(eq(Conversations.formId, formId), eq(Conversations.inviteJti, inviteJti)))
+      .limit(1)
+  }
+  else if (userId) {
+    existing = await db
+      .select()
+      .from(Conversations)
+      .where(and(eq(Conversations.formId, formId), eq(Conversations.respondentUserId, userId)))
+      .limit(1)
+  }
   if (existing.length > 0) {
     // ensure first turn exists
     await ensureFirstTurn(existing[0].id, formId)
@@ -49,9 +110,33 @@ export const getOrCreateConversation = action(async (raw: { formId: string }) =>
 
   const [created] = await db.insert(Conversations).values({
     formId,
-    respondentUserId: userId,
+    respondentUserId: inviteJti ? (null as any) : (userId ?? null as any),
+    inviteJti: inviteJti ?? null as any,
     status: 'active',
-  }).returning()
+  }).returning().catch(async (e: any) => {
+    const msg = String(e?.message || e)
+    // Handle race/duplication gracefully by returning existing conversation
+    if (msg.includes('UNIQUE constraint failed')) {
+      let rows: any[] = []
+      if (inviteJti) {
+        rows = await db
+          .select()
+          .from(Conversations)
+          .where(and(eq(Conversations.formId, formId), eq(Conversations.inviteJti, inviteJti)))
+          .limit(1)
+      }
+      else if (userId) {
+        rows = await db
+          .select()
+          .from(Conversations)
+          .where(and(eq(Conversations.formId, formId), eq(Conversations.respondentUserId, userId)))
+          .limit(1)
+      }
+      if (rows.length > 0)
+        return rows
+    }
+    throw e
+  })
 
   // ensure first turn exists for new conversation
   await ensureFirstTurn(created.id, formId)
@@ -62,13 +147,15 @@ const listTurnsSchema = z.object({ conversationId: idSchema })
 
 export const listTurns = query(async (raw: { conversationId: string }) => {
   'use server'
-  const userId = await requireUserId()
   const { conversationId } = safeParseOrThrow(listTurnsSchema, raw, 'conv:listTurns')
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
-  if (conv.respondentUserId !== userId)
+  // authorize: either same user or same invite
+  const { userId, inviteJti } = await getIdentityForForm(conv.formId)
+  const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
+  if (!ok)
     throw new Error('Forbidden')
 
   const items = await db
@@ -88,7 +175,6 @@ const answerQuestionSchema = z.object({
 
 export const answerQuestion = action(async (raw: { conversationId: string, turnId: string, value: string | number | boolean }) => {
   'use server'
-  const userId = await requireUserId()
   const { conversationId, turnId, value } = safeParseOrThrow(answerQuestionSchema, raw, 'conv:answer')
   // Use a transaction so that if AI generation/validation fails,
   // we roll back the turn update and allow retry without leaving the turn answered.
@@ -96,7 +182,9 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
     const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
     if (!conv)
       throw new Error('Conversation not found')
-    if (conv.respondentUserId !== userId)
+    const { userId, inviteJti } = await getIdentityForForm(conv.formId)
+    const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
+    if (!ok)
       throw new Error('Forbidden')
     if (conv.status !== 'active')
       throw new Error('Conversation not active')
@@ -163,13 +251,14 @@ const completeSchema = z.object({ conversationId: idSchema })
 
 export const completeConversation = action(async (raw: { conversationId: string }) => {
   'use server'
-  const userId = await requireUserId()
   const { conversationId } = safeParseOrThrow(completeSchema, raw, 'conv:complete')
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
-  if (conv.respondentUserId !== userId)
+  const { userId, inviteJti } = await getIdentityForForm(conv.formId)
+  const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
+  if (!ok)
     throw new Error('Forbidden')
 
   const [updated] = await db
@@ -186,7 +275,9 @@ const rewindSchema = z.object({ conversationId: idSchema })
 // Owner-only: delete current active question and reopen previous question
 export const rewindOneStep = action(async (raw: { conversationId: string }) => {
   'use server'
-  const userId = await requireUserId()
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = ensure(session?.user?.id, 'Unauthorized')
   const { conversationId } = safeParseOrThrow(rewindSchema, raw, 'conv:rewind')
 
   // Load conversation and form to check ownership
@@ -262,7 +353,9 @@ const resetSchema = z.object({ conversationId: idSchema })
 // Owner-only: reset entire conversation to the beginning (delete all turns and reinsert seed)
 export const resetConversation = action(async (raw: { conversationId: string }) => {
   'use server'
-  const userId = await requireUserId()
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = ensure(session?.user?.id, 'Unauthorized')
   const { conversationId } = safeParseOrThrow(resetSchema, raw, 'conv:reset')
 
   // Load conversation and form to check ownership
