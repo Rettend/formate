@@ -1,8 +1,5 @@
 import { serverEnv } from '~/env/server'
 
-// Simple AES-GCM encryption using a key derived from AUTH_SECRET (SHA-256)
-// Result format: base64(iv(12 bytes) + ciphertext)
-
 const TEXT = new TextEncoder()
 const BYTES = new TextDecoder()
 

@@ -12,7 +12,6 @@ export const serverScheme = z.object({
 })
 
 export const clientScheme = z.object({
-  VITE_API_URL: z.string(),
 })
 
 export function parseEnv<T extends z.ZodTypeAny>(
