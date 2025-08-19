@@ -7,14 +7,14 @@
         "@ai-sdk/google": "^2.0.7",
         "@kobalte/core": "^0.13.11",
         "@libsql/client": "^0.15.12",
-        "@rttnd/gau": "^0.3.6",
+        "@rttnd/gau": "^0.3.7",
         "@solid-primitives/memo": "^1.4.3",
         "@solid-primitives/scheduled": "^1.5.2",
         "@solid-primitives/storage": "^4.3.3",
         "@solidjs/router": "^0.15.3",
         "@solidjs/start": "^1.1.7",
         "@unocss/reset": "^66.4.2",
-        "ai": "^5.0.16",
+        "ai": "^5.0.17",
         "bs58": "^6.0.0",
         "class-variance-authority": "^0.7.1",
         "drizzle-orm": "^0.44.4",
@@ -451,7 +451,7 @@
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.46.2", "", { "os": "win32", "cpu": "x64" }, "sha512-CvUo2ixeIQGtF6WvuB87XWqPQkoFAFqW+HUo/WzHwuHDvIwZCtjdWXoYCcr06iKGydiqTclC4jU/TNObC/xKZg=="],
 
-    "@rttnd/gau": ["@rttnd/gau@0.3.6", "", { "dependencies": { "@oslojs/jwt": "^0.3.0", "arctic": "^3.7.0", "cookie": "^1.0.2", "esm-env": "^1.2.2" }, "peerDependencies": { "@sveltejs/kit": "^2.25.1", "@tauri-apps/api": "^2.6.0", "@tauri-apps/plugin-os": "^2.3.0", "@tauri-apps/plugin-shell": "^2.3.0", "drizzle-orm": "^0.44.3", "solid-js": "^1.9.7", "svelte": "^5.36.10", "typescript": "^5.8.3" }, "optionalPeers": ["@sveltejs/kit", "@tauri-apps/api", "@tauri-apps/plugin-os", "@tauri-apps/plugin-shell", "drizzle-orm", "solid-js", "svelte", "typescript"], "bin": { "gau": "dist/cli/index.js" } }, "sha512-TXKchPrSkmtoMJeCtWZDK/2FIOXf8NqWxzJv3F3ImFBnnweXlAFeaWa92f6dYm7wy8e/jt0gWmniIYzFAg7GAg=="],
+    "@rttnd/gau": ["@rttnd/gau@0.3.7", "", { "dependencies": { "@oslojs/jwt": "^0.3.0", "arctic": "^3.7.0", "cookie": "^1.0.2", "esm-env": "^1.2.2" }, "peerDependencies": { "@sveltejs/kit": "^2.25.1", "@tauri-apps/api": "^2.6.0", "@tauri-apps/plugin-os": "^2.3.0", "@tauri-apps/plugin-shell": "^2.3.0", "drizzle-orm": "^0.44.3", "solid-js": "^1.9.7", "svelte": "^5.36.10", "typescript": "^5.8.3" }, "optionalPeers": ["@sveltejs/kit", "@tauri-apps/api", "@tauri-apps/plugin-os", "@tauri-apps/plugin-shell", "drizzle-orm", "solid-js", "svelte", "typescript"], "bin": { "gau": "dist/cli/index.js" } }, "sha512-lQ1Kp20rn5bQ7aB8vGyf6B+fKFSUObxoNGVn/ft+b5qN5EQRiTctC49Ya8rQq/9ghwWB3m+8WEqNs/6L024++w=="],
 
     "@shikijs/core": ["@shikijs/core@1.29.2", "", { "dependencies": { "@shikijs/engine-javascript": "1.29.2", "@shikijs/engine-oniguruma": "1.29.2", "@shikijs/types": "1.29.2", "@shikijs/vscode-textmate": "^10.0.1", "@types/hast": "^3.0.4", "hast-util-to-html": "^9.0.4" } }, "sha512-vju0lY9r27jJfOY4Z7+Rt/nIOjzJpZ3y+nYpqtUZInVoXQ/TJZcfGnNOGnKjFdVZb8qexiCuSlZRKcGfhhTTZQ=="],
 
@@ -673,7 +673,7 @@
 
     "agent-base": ["agent-base@7.1.4", "", {}, "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="],
 
-    "ai": ["ai@5.0.16", "", { "dependencies": { "@ai-sdk/gateway": "1.0.8", "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.4", "@opentelemetry/api": "1.9.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4" } }, "sha512-shrrGo0i1cd3y8+/W9KpnRexqUpOgQ6Qj0yccKr4fQz4lMP6yKejNxAkOyaUYOqkM0OYovAYa6kyNxzZNdEUOw=="],
+    "ai": ["ai@5.0.17", "", { "dependencies": { "@ai-sdk/gateway": "1.0.8", "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.4", "@opentelemetry/api": "1.9.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4" } }, "sha512-DLZikqZZJdwSkRhFikw6Mt7pUmPZ7Ue38TjdOcw2U6iZtBbuiyWGIhHyJXlUpLcZrtBE5yqPTozyZri1lRjduw=="],
 
     "ajv": ["ajv@6.12.6", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g=="],
 
