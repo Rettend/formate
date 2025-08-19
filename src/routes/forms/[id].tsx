@@ -11,7 +11,7 @@ import { Checkbox } from '~/components/ui/checkbox'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormStopping, unpublishForm } from '~/server/forms'
+import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, unpublishForm } from '~/server/forms'
 
 export const route = {
   preload({ params }) {
@@ -35,6 +35,7 @@ function FormDetail() {
   const saveKey = useAction(saveFormProviderKey)
   const clearKey = useAction(clearFormProviderKey)
   const saveAccess = useAction(saveFormAccess)
+  const saveSlug = useAction(saveFormSlug)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
   const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
@@ -87,8 +88,7 @@ function FormDetail() {
 
   const handleShare = async () => {
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    // TODO: switch to slug when available on the form
-    const url = `${base}/r/${id()}`
+    const url = `${base}/r/${form()?.slug || id()}`
     try {
       await navigator.clipboard.writeText(url)
     }
@@ -301,9 +301,44 @@ function FormDetail() {
                                 }}
                               />
                               <div class="grid gap-1.5 leading-none">
-                                <Label for="allow-oauth-respondents">Allow anyone to complete by signing in</Label>
-                                <p class="text-xs text-muted-foreground">If disabled, respondents must use a single-use invite link. If enabled, either invites or OAuth can be used.</p>
+                                <Label for="allow-oauth-respondents">Allow anyone to submit by signing in</Label>
+                                <p class="text-xs text-muted-foreground">If disabled, respondents must use a single-use invite link. If enabled, either invites or signing in can be used, or both.</p>
                               </div>
+                            </div>
+
+                            <div class="mb-4">
+                              <label class="text-sm font-medium">Public name (slug)</label>
+                              <p class="mb-2 text-xs text-muted-foreground">Used in the URL. Only lowercase letters, numbers and hyphens. Example: <code class="code">/r/my-form</code></p>
+                              <form
+                                class="flex items-center gap-2"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  const input = e.currentTarget.querySelector('input[name=slug]') as HTMLInputElement | null
+                                  const value = (input?.value || '').trim()
+                                  if (!value)
+                                    return
+                                  void saveSlug({ formId: id(), slug: value }).then(async () => {
+                                    await revalidate([getForm.key])
+                                  }).catch((err) => {
+                                    console.error('Save slug failed', err)
+                                  })
+                                }}
+                              >
+                                <input
+                                  type="text"
+                                  name="slug"
+                                  placeholder="my-form-name"
+                                  class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
+                                  value={(form() as any)?.slug || ''}
+                                  onInput={() => {
+                                    // optimistic local reflect only
+                                  }}
+                                />
+                                <Button type="submit" size="sm">Save</Button>
+                              </form>
+                              <Show when={(form() as any)?.slug}>
+                                <p class="mt-2 text-xs text-muted-foreground">Preview: <code class="code">/r/{(form() as any)?.slug}</code></p>
+                              </Show>
                             </div>
 
                             <h3 class="text-sm font-semibold">Provider API key</h3>

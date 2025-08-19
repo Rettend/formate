@@ -7,7 +7,7 @@ import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 import { encryptSecret } from './crypto'
 import { db } from './db'
-import { Forms, FormTestRuns } from './db/schema'
+import { Forms, FormTestRuns, Invites } from './db/schema'
 
 export interface ListFormsInput {
   page?: number
@@ -86,6 +86,10 @@ const createFormSchema = z.object({
   title: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
   slug: z.string().optional().transform(v => (typeof v === 'string' ? v.trim() : undefined)),
 })
+const saveFormSchema = z.object({
+  formId: idSchema,
+  slug: z.string().min(1).max(100).transform(v => v.trim()),
+})
 
 export const createForm = action(async (raw: { title?: string, slug?: string }) => {
   'use server'
@@ -114,6 +118,32 @@ export const createForm = action(async (raw: { title?: string, slug?: string }) 
   return created
 }, 'forms:create')
 
+export const saveFormSlug = action(async (raw: { formId: string, slug: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(saveFormSchema, raw, 'forms:saveSlug')
+  const slugSanitized = input.slug
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80)
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ slug: slugSanitized, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning()
+
+  if (!updated)
+    throw new Error('Not found')
+  return updated
+}, 'forms:saveSlug')
 const updateFormSchema = z.object({
   formId: idSchema,
   patch: z.object({
@@ -214,6 +244,31 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
       .from(Forms)
       .where(eq(Forms.id, slug))
     form = rows.find(canView)
+  }
+
+  // Fallback 2: short invite code or vanity link
+  // Accept trailing Base58 code optionally preceded by a slug and dash.
+  if (!form) {
+    let code: string | undefined
+    const maybe = slug.split('-').pop() || ''
+    const base58 = /^[1-9A-HJ-NP-Za-km-z]{6,24}$/
+    if (base58.test(maybe))
+      code = maybe
+    else if (base58.test(slug))
+      code = slug
+
+    if (code) {
+      // Resolve invite to formId
+      const inviteRows = await db.select().from(Invites).where(eq(Invites.shortCode, code)).limit(1)
+      const inv = inviteRows[0] as any
+      if (inv) {
+        rows = await db
+          .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+          .from(Forms)
+          .where(eq(Forms.id, inv.formId))
+        form = rows.find(canView)
+      }
+    }
   }
 
   return form ?? null

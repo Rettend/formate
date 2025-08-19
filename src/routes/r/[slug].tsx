@@ -7,6 +7,7 @@ import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAuth } from '~/lib/auth'
+import { extractTokenFromText, parseVanityOrCode } from '~/lib/invites'
 import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
 import { redeemInvite } from '~/server/invites'
@@ -59,6 +60,8 @@ export default function Respondent() {
   const [redeemed, setRedeemed] = createSignal(false)
   const [redeemStarted, setRedeemStarted] = createSignal(false)
   const [inviteInput, setInviteInput] = createSignal('')
+  const [showInviteInput, setShowInviteInput] = createSignal(false)
+  const [didOrchestrate, setDidOrchestrate] = createSignal(false)
 
   // Turns keyed by conversationId
   const turnsResult = createAsync(async () => {
@@ -97,64 +100,87 @@ export default function Respondent() {
     }
   }
 
-  // Single orchestrating effect: redeem invite token (if present) and/or auto-start
-  createEffect(() => {
-    const f = form()
-    if (!f)
-      return
-
+  const orchestrateOnce = async (f: any) => {
     const href = typeof window !== 'undefined' ? window.location.href : `https://x/${slug()}`
     let token: string | null = null
     try {
       token = new URL(href).searchParams.get('t')
     }
-    catch {
-      // ignore invalid URL structure
+    catch {}
+
+    // Also support short or vanity code in the path itself
+    const code = (() => {
+      try {
+        return parseVanityOrCode(slug() || '', (f as any).slug || undefined)
+      }
+      catch {
+        return null
+      }
+    })()
+
+    const clearQueryToken = () => {
+      if (typeof window !== 'undefined') {
+        const clean = new URL(window.location.href)
+        if (clean.searchParams.has('t')) {
+          clean.searchParams.delete('t')
+          window.history.replaceState({}, '', clean.toString())
+        }
+      }
     }
 
-    if (token && !redeemStarted() && !redeemed()) {
+    if (token || code) {
       // Ensure store path exists, then clear any local conversation for this tab before redeeming
       initProgress(setStore, f.id, userId())
       setStore('byForm', f.id, 'byUser', userId(), 'conversationId', undefined)
       setRedeemStarted(true)
-      ;(async () => {
-        setLoading(true)
-        try {
+      setLoading(true)
+      try {
+        if (code)
+          await redeem({ code })
+        else if (token)
           await redeem({ token })
-          setRedeemed(true)
-          if (typeof window !== 'undefined') {
-            const clean = new URL(window.location.href)
-            clean.searchParams.delete('t')
-            window.history.replaceState({}, '', clean.toString())
-          }
-          toast.success('Invite accepted. You can start now.')
+        setRedeemed(true)
+        clearQueryToken()
+        toast.success('Invite accepted. You can start now.')
+        setAutoStartTriggered(true)
+        await handleStart()
+      }
+      catch (e) {
+        clearQueryToken()
+        const msg = e instanceof Error ? e.message : String(e)
+        if (typeof msg === 'string' && msg.toLowerCase().includes('already used')) {
+          // Attempt to resume using existing cookie (same browser); if it fails, show invite input
           setAutoStartTriggered(true)
           await handleStart()
-        }
-        catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          if (typeof msg === 'string' && msg.toLowerCase().includes('already used')) {
-            setRedeemed(true)
-            setAutoStartTriggered(true)
-            await handleStart()
-            toast.success('Invite accepted. You can start now.')
-          }
-          else {
-            toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
+          if (!progress()?.conversationId) {
+            toast.error('Invite already used')
+            setShowInviteInput(true)
           }
         }
-        finally {
-          setLoading(false)
+        else {
+          toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
+          setShowInviteInput(true)
         }
-      })()
+      }
+      finally {
+        setRedeemStarted(false)
+        setLoading(false)
+      }
       return
     }
 
-    // No token: start automatically for signed-in respondents
-    if (!token && Boolean(auth.session().user) && !progress()?.conversationId && !autoStartTriggered()) {
+    if (Boolean(auth.session().user) && !progress()?.conversationId && !autoStartTriggered()) {
       setAutoStartTriggered(true)
-      void handleStart()
+      await handleStart()
     }
+  }
+
+  createEffect(() => {
+    const f = form()
+    if (!f || didOrchestrate())
+      return
+    setDidOrchestrate(true)
+    void orchestrateOnce(f)
   })
 
   const handleRewind = async () => {
@@ -280,49 +306,25 @@ export default function Respondent() {
     catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (typeof msg === 'string' && msg.toLowerCase().includes('already used')) {
-        setRedeemed(true)
-        if (el)
-          el.value = ''
-        setInviteInput('')
-        toast.success('Invite accepted. You can start now.')
-        await handleStart()
+        // Try to resume if invite cookie exists in this browser; else show input
+        const f = form()
+        if (f)
+          await handleStart()
+        if (!progress()?.conversationId) {
+          toast.error('Invite already used')
+          setShowInviteInput(true)
+        }
+        setRedeemStarted(false)
       }
       else {
         toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
+        setRedeemStarted(false)
+        setShowInviteInput(true)
       }
     }
     finally {
       setLoading(false)
     }
-  }
-
-  function extractTokenFromText(text: string): string | null {
-    const s = (text || '').trim()
-    if (!s)
-      return null
-    // Try URL parsing
-    try {
-      const url = new URL(s)
-      const tok = url.searchParams.get('t')
-      if (tok && tok.length > 10)
-        return tok
-    }
-    catch {}
-    // Try query substring
-    if (s.includes('t=')) {
-      try {
-        const q = s.split('?')[1] || s
-        const p = new URLSearchParams(q)
-        const tok = p.get('t')
-        if (tok && tok.length > 10)
-          return tok
-      }
-      catch {}
-    }
-    // Fallback: JWT-ish
-    if (s.split('.').length === 3 && s.length > 20)
-      return s
-    return null
   }
 
   function onInviteKeyDown(e: KeyboardEvent) {
@@ -387,8 +389,8 @@ export default function Respondent() {
               </div>
             </Show>
 
-            {/* Invite fallback: if OAuth disabled, show invite code input (hide after redeem) */}
-            <Show when={!auth.session().user && !(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true) && !redeemed() && !progress()?.conversationId}>
+            {/* Invite input: show when OAuth disabled OR explicitly requested due to an invite error; hide after successful redeem */}
+            <Show when={!auth.session().user && (!(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true) || showInviteInput()) && !redeemed() && !progress()?.conversationId}>
               <div class="mx-auto max-w-sm border rounded-md bg-card p-4 text-card-foreground">
                 <div class="text-sm font-medium">Enter invite code</div>
                 <p class="mb-2 text-xs text-muted-foreground">Paste the invite token you received. If you opened the link directly, this step isn’t needed.</p>

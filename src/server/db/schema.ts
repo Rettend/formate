@@ -112,14 +112,20 @@ export const Turns = sqliteTable('turns', {
 export type Turn = typeof Turns.$inferSelect
 export type TurnNew = typeof Turns.$inferInsert
 
-export const UsedInviteTokens = sqliteTable('used_invite_tokens', {
+export const Invites = sqliteTable('invites', {
   jti: text().primaryKey(),
   formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
+  shortCode: text().notNull(),
+  expAt: integer({ mode: 'timestamp' }),
+  createdByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
+  createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+  usedAt: integer({ mode: 'timestamp' }),
   usedByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
-  usedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
 }, t => [
-  index('used_invites_form_idx').on(t.formId),
+  uniqueIndex('invites_short_code_unique').on(t.shortCode),
+  index('invites_form_idx').on(t.formId),
+  index('invites_used_idx').on(t.usedAt),
 ])
 
-export type UsedInviteToken = typeof UsedInviteTokens.$inferSelect
-export type UsedInviteTokenNew = typeof UsedInviteTokens.$inferInsert
+export type Invite = typeof Invites.$inferSelect
+export type InviteNew = typeof Invites.$inferInsert

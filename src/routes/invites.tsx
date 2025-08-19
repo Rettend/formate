@@ -29,7 +29,17 @@ function Invites() {
       }
       // Copy a list of URLs for convenience using current origin
       const base = typeof window !== 'undefined' ? window.location.origin : ''
-      const urls = tokens.map(t => `${base}/r/${slug || formId}?t=${encodeURIComponent(t.token)}`)
+      const urls = tokens.map((t: any) => {
+        const code = t.code as string | undefined
+        if (code) {
+          // Prefer vanity when slug exists
+          if (slug)
+            return `${base}/r/${slug}-${code}`
+          return `${base}/r/${code}`
+        }
+        // Fallback to legacy token path
+        return `${base}/r/${slug || formId}?t=${encodeURIComponent(t.token)}`
+      })
       await navigator.clipboard.writeText(urls.join('\n'))
       toast.success(`Generated ${tokens.length} invite${tokens.length > 1 ? 's' : ''}. Links copied to clipboard.`)
     }
