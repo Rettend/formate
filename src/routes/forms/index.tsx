@@ -1,10 +1,13 @@
+import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction, useSubmissions } from '@solidjs/router'
 import { createSignal, For, onCleanup } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 import { deleteForm, listForms, publishForm, unpublishForm } from '~/server/forms'
 
-export default function FormsList() {
+export default Protected(() => <FormsList />, '/')
+
+function FormsList() {
   const forms = createAsync(() => listForms({}))
   const remove = useAction(deleteForm)
   const publish = useAction(publishForm)
@@ -93,7 +96,7 @@ export default function FormsList() {
   }
 
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section>
         <div class="mb-6 flex items-center justify-between">
           <div>

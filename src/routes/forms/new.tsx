@@ -1,3 +1,4 @@
+import { Protected } from '@rttnd/gau/client/solid'
 import { useAction, useNavigate } from '@solidjs/router'
 import { createSignal } from 'solid-js'
 import { toast } from 'solid-sonner'
@@ -5,7 +6,9 @@ import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 import { createForm } from '~/server/forms'
 
-export default function NewForm() {
+export default Protected(() => <NewForm />, '/')
+
+function NewForm() {
   const navigate = useNavigate()
   const create = useAction(createForm)
   const [title, setTitle] = createSignal('')
@@ -35,7 +38,7 @@ export default function NewForm() {
   }
 
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section>
         <h1 class="mb-4 text-xl font-semibold tracking-tight">Create form</h1>
         <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm space-y-4">

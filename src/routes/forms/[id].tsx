@@ -1,4 +1,5 @@
 import type { RouteDefinition } from '@solidjs/router'
+import { Protected } from '@rttnd/gau/client/solid'
 import { debounce } from '@solid-primitives/scheduled'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js'
@@ -18,7 +19,9 @@ export const route = {
   },
 } satisfies RouteDefinition
 
-export default function FormDetail() {
+export default Protected(() => <FormDetail />, '/')
+
+function FormDetail() {
   const params = useParams()
   const id = createMemo(() => params.id)
   const nav = useNavigate()
@@ -118,7 +121,7 @@ export default function FormDetail() {
   }
 
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">

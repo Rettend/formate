@@ -1,20 +1,10 @@
 import type { ParentProps } from 'solid-js'
-import { useNavigate } from '@solidjs/router'
-import { createEffect, createMemo, Show } from 'solid-js'
+import { createMemo, Show } from 'solid-js'
 import { AppHeader } from '~/components/AppHeader'
 import { AppMobileNav, AppSidebar } from '~/components/AppNav'
-import { useAuth } from '~/lib/auth'
 
-export function AppShell(props: ParentProps & { requireAuth?: boolean, showSidebar?: boolean }) {
-  const auth = useAuth()
-  const navigate = useNavigate()
-  const isAuthed = createMemo(() => Boolean(auth.session().user))
+export function AppShell(props: ParentProps & { showSidebar?: boolean }) {
   const showSidebar = createMemo(() => props.showSidebar ?? true)
-
-  createEffect(() => {
-    if (props.requireAuth !== false && !isAuthed())
-      navigate('/')
-  })
 
   return (
     <main class="min-h-screen flex flex-col">
@@ -24,9 +14,7 @@ export function AppShell(props: ParentProps & { requireAuth?: boolean, showSideb
           <Show when={showSidebar()}>
             <AppSidebar />
           </Show>
-          <div class="min-w-0 flex-1">
-            {props.children}
-          </div>
+          <div class="min-w-0 flex-1">{props.children}</div>
         </div>
       </div>
       <Show when={showSidebar()}>

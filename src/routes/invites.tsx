@@ -1,3 +1,4 @@
+import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction } from '@solidjs/router'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { toast } from 'solid-sonner'
@@ -7,7 +8,9 @@ import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberField
 import { listForms } from '~/server/forms'
 import { createInviteTokens, listUsedInviteTokens } from '~/server/invites'
 
-export default function Invites() {
+export default Protected(() => <Invites />, '/')
+
+function Invites() {
   const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
   const used = createAsync(() => listUsedInviteTokens())
   const gen = useAction(createInviteTokens)
@@ -39,7 +42,7 @@ export default function Invites() {
   }
 
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section class="space-y-6">
         <div>
           <h1 class="text-xl font-semibold tracking-tight">Invites</h1>

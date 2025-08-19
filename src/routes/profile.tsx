@@ -1,3 +1,4 @@
+import { Protected } from '@rttnd/gau/client/solid'
 import { createSignal, For, Show } from 'solid-js'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
@@ -7,7 +8,9 @@ import { useAuth } from '~/lib/auth'
 import { useUIStore } from '~/stores/ui'
 import { encryptApiKey } from '~/utils/crypto'
 
-export default function Profile() {
+export default Protected(() => <Profile />, '/')
+
+function Profile() {
   const auth = useAuth()
   const { ui, actions } = useUIStore()
   const [inputs, setInputs] = createSignal<Record<string, string>>({})
@@ -29,7 +32,7 @@ export default function Profile() {
     actions.deleteApiKey(provider)
   }
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section class="space-y-4">
         <h1 class="text-xl font-semibold tracking-tight">Profile</h1>
         <Show when={auth.session().user} fallback={<p class="text-sm text-muted-foreground">You are signed out.</p>}>

@@ -351,7 +351,7 @@ export default function Respondent() {
   )
 
   return (
-    <AppShell requireAuth={false} showSidebar={Boolean(isOwner())}>
+    <AppShell showSidebar={Boolean(isOwner())}>
       <section class="mx-auto max-w-3xl min-h-[70vh] py-6">
         <Suspense fallback={<div class="mx-auto max-w-md w-full"><Skeleton height={180} width={360} radius={10} /></div>}>
           <div class="w-full space-y-8">

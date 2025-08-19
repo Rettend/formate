@@ -1,10 +1,13 @@
+import { Protected } from '@rttnd/gau/client/solid'
 import { A } from '@solidjs/router'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 
-export default function Dashboard() {
+export default Protected(() => <Dashboard />, '/')
+
+function Dashboard() {
   return (
-    <AppShell requireAuth>
+    <AppShell>
       <section>
         <div class="mb-6 flex items-center justify-between">
           <div>
