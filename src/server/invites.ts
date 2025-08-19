@@ -15,7 +15,13 @@ function ensureOwner(form: { ownerUserId: string }, userId?: string) {
     throw new Error('Forbidden')
 }
 
-export const createInviteTokens = action(async (raw: { formId: string, count?: number, ttlMinutes?: number }) => {
+interface InviteEntryInput { label?: string | null, ttlMinutes?: number }
+interface InviteUnused { jti: string, code: string, label?: string | null, createdAt: Date, expAt?: Date | null }
+interface InviteUsed { jti: string, code: string, label?: string | null, usedAt: Date, usedByUserId?: string | null }
+interface InviteRevoked { jti: string, code: string, label?: string | null, revokedAt: Date }
+type InvitesByForm = Record<string, { unused: InviteUnused[], used: InviteUsed[], revoked: InviteRevoked[] }>
+
+export const createInviteTokens = action(async (raw: { formId: string, count?: number, ttlMinutes?: number, entries?: Array<InviteEntryInput> }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -25,6 +31,10 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
     formId: idSchema,
     count: z.coerce.number().int().min(1).max(100).default(1).optional(),
     ttlMinutes: z.coerce.number().int().min(5).max(60 * 24 * 30).default(60 * 24 * 7).optional(),
+    entries: z.array(z.object({
+      label: z.string().max(128).optional().nullable(),
+      ttlMinutes: z.coerce.number().int().min(5).max(60 * 24 * 30).optional(),
+    })).min(1).max(10).optional(),
   }), raw, 'invites:create')
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
@@ -34,10 +44,10 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
 
   const ttlSec = (input.ttlMinutes ?? 60 * 24 * 7) * 60
 
-  const count = Math.max(1, Math.min(100, input.count ?? 1))
+  const entries = input.entries?.slice(0, 10) ?? Array.from({ length: Math.max(1, Math.min(100, input.count ?? 1)) }, () => ({ label: null as string | null, ttlMinutes: input.ttlMinutes }))
 
-  const codes: Array<{ jti: string, expSec: number, code: string }> = []
-  for (let i = 0; i < count; i++) {
+  const codes: Array<{ jti: string, expSec: number, code: string, label?: string | null }> = []
+  for (let i = 0; i < entries.length; i++) {
     // Create unique id and short code
     const jti = uuidV7Base58()
 
@@ -54,11 +64,12 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
       jti,
       formId: input.formId,
       shortCode: code,
-      expAt: new Date(Date.now() + ttlSec * 1000) as any,
+      label: entries[i]?.label ?? null as any,
+      expAt: new Date(Date.now() + ((entries[i]?.ttlMinutes ? entries[i]!.ttlMinutes! * 60 : ttlSec)) * 1000) as any,
       createdByUserId: userId as any,
     })
 
-    codes.push({ jti, expSec: ttlSec, code })
+    codes.push({ jti, expSec: ttlSec, code, label: entries[i]?.label ?? null })
   }
   return { codes }
 }, 'invites:create')
@@ -112,9 +123,14 @@ export const redeemInvite = action(async (raw: { code: string }) => {
     throw new Error('Invalid invite')
   const formId = (inv as any).formId as string
   const jti = (inv as any).jti as string
+  const revokedAt = (inv as any).revokedAt as Date | null
   if ((inv as any).usedAt)
     throw new Error('Invite already used')
+  if (revokedAt)
+    throw new Error('Invite revoked')
   const exp = ((inv as any).expAt as Date | undefined) ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
+  if (exp && exp.getTime() < Date.now())
+    throw new Error('Invite expired')
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId!))
   if (!form)
@@ -153,3 +169,105 @@ export const resolveInviteCode = query(async (raw: { code: string }) => {
   const [form] = await db.select({ slug: Forms.slug }).from(Forms).where(eq(Forms.id, formId))
   return { formId, slug: (form as any)?.slug as string | undefined }
 }, 'invites:resolve')
+
+export const listInvitesByForm = query(async () => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const owned = await db
+    .select({ id: Forms.id, title: Forms.title, slug: Forms.slug })
+    .from(Forms)
+    .where(eq(Forms.ownerUserId, userId))
+    .orderBy(asc(Forms.title))
+
+  const formIds = owned.map(f => f.id)
+  if (formIds.length === 0)
+    return { forms: [], byForm: {} as InvitesByForm }
+
+  const rows = await db
+    .select({
+      formId: Invites.formId,
+      jti: Invites.jti,
+      code: Invites.shortCode,
+      label: Invites.label,
+      createdAt: Invites.createdAt,
+      expAt: Invites.expAt,
+      usedAt: Invites.usedAt,
+      usedByUserId: Invites.usedByUserId,
+      revokedAt: Invites.revokedAt,
+    })
+    .from(Invites)
+    .where(inArray(Invites.formId, formIds))
+    .orderBy(desc(Invites.createdAt))
+
+  const byForm: InvitesByForm = {}
+
+  for (const r of rows as any[]) {
+    const fid = r.formId as string
+    if (!byForm[fid])
+      byForm[fid] = { unused: [], used: [], revoked: [] }
+    if (r.revokedAt) {
+      byForm[fid].revoked.push({ jti: r.jti, code: r.code, label: r.label ?? null, revokedAt: r.revokedAt })
+      continue
+    }
+    if (r.usedAt)
+      byForm[fid].used.push({ jti: r.jti, code: r.code, label: r.label ?? null, usedAt: r.usedAt, usedByUserId: r.usedByUserId ?? null })
+
+    else
+      byForm[fid].unused.push({ jti: r.jti, code: r.code, label: r.label ?? null, createdAt: r.createdAt, expAt: r.expAt ?? null })
+  }
+
+  return { forms: owned, byForm }
+}, 'invites:listAll')
+
+export const revokeInvite = action(async (raw: { jti: string }) => {
+  'use server'
+  const { jti } = safeParseOrThrow(z.object({ jti: z.string().min(8) }), raw, 'invites:revoke')
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const [inv] = await db.select().from(Invites).where(eq(Invites.jti, jti))
+  if (!inv)
+    throw new Error('Invite not found')
+  const formId = (inv as any).formId as string
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
+  if (!form)
+    throw new Error('Form not found')
+  ensureOwner(form, userId)
+  if ((inv as any).usedAt)
+    throw new Error('Cannot revoke a used invite')
+  if ((inv as any).revokedAt)
+    return { ok: true }
+
+  await db.update(Invites).set({ revokedAt: new Date() as any }).where(eq(Invites.jti, jti))
+  return { ok: true }
+}, 'invites:revoke')
+
+export const updateInviteLabel = action(async (raw: { jti: string, label?: string | null }) => {
+  'use server'
+  const { jti, label } = safeParseOrThrow(z.object({ jti: z.string().min(8), label: z.string().max(128).optional().nullable() }), raw, 'invites:updateLabel')
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const [inv] = await db.select().from(Invites).where(eq(Invites.jti, jti))
+  if (!inv)
+    throw new Error('Invite not found')
+  const formId = (inv as any).formId as string
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
+  if (!form)
+    throw new Error('Form not found')
+  ensureOwner(form, userId)
+
+  await db.update(Invites).set({ label: (label ?? null) as any }).where(eq(Invites.jti, jti))
+  return { ok: true }
+}, 'invites:updateLabel')

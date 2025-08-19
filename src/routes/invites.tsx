@@ -5,38 +5,88 @@ import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { listForms } from '~/server/forms'
-import { createInviteTokens, listUsedInviteTokens } from '~/server/invites'
+import { createInviteTokens, listInvitesByForm, revokeInvite, updateInviteLabel } from '~/server/invites'
 
 export default Protected(() => <Invites />, '/')
 
 function Invites() {
   const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
-  const used = createAsync(() => listUsedInviteTokens())
+  const invites = createAsync(() => listInvitesByForm())
   const gen = useAction(createInviteTokens)
-  const [countByForm, setCountByForm] = createSignal<Record<string, number>>({})
+  const doRevoke = useAction(revokeInvite)
+  const doUpdateLabel = useAction(updateInviteLabel)
 
-  const byFormUsed = createMemo(() => used()?.byForm ?? {})
+  const [countByForm, setCountByForm] = createSignal<Record<string, number>>({})
+  const [labelsByForm, setLabelsByForm] = createSignal<Record<string, string[]>>({})
+  const [editingLabel, setEditingLabel] = createSignal<{ jti: string, value: string } | null>(null)
+
+  const byForm = createMemo(() => invites()?.byForm ?? {})
 
   const handleGenerate = async (formId: string, _slug?: string) => {
-    const count = Math.max(1, Math.min(100, Number(countByForm()[formId] ?? 1)))
+    const count = Math.max(1, Math.min(10, Number(countByForm()[formId] ?? 1)))
+    const labels = (labelsByForm()[formId] ?? []).slice(0, count)
     try {
-      const res = await gen({ formId, count })
+      const res = await gen({ formId, entries: labels.map(l => ({ label: l?.trim() ? l.trim() : null })) })
       const codes = res?.codes ?? []
       if (codes.length === 0) {
-        toast.error('No tokens generated')
+        toast.error('No invites generated')
         return
       }
       const base = typeof window !== 'undefined' ? window.location.origin : ''
       const urls = codes.map((t: any) => `${base}/r/${t.code}`)
       await navigator.clipboard.writeText(urls.join('\n'))
       toast.success(`Generated ${codes.length} invite${codes.length > 1 ? 's' : ''}. Links copied to clipboard.`)
+      setCountByForm(prev => ({ ...prev, [formId]: 1 }))
+      setLabelsByForm(prev => ({ ...prev, [formId]: [''] }))
     }
     catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to generate')
     }
     finally {
-      await revalidate([listUsedInviteTokens.key])
+      await revalidate([listInvitesByForm.key])
+    }
+  }
+
+  const copyLink = async (code: string) => {
+    const base = typeof window !== 'undefined' ? window.location.origin : ''
+    const url = `${base}/r/${code}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Invite link copied')
+    }
+    catch {
+      toast.error('Failed to copy')
+    }
+  }
+
+  const handleRevoke = async (jti: string) => {
+    try {
+      await doRevoke({ jti })
+      toast.success('Invite revoked')
+      await revalidate([listInvitesByForm.key])
+    }
+    catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to revoke')
+    }
+  }
+
+  const startEdit = (jti: string, current?: string | null) => {
+    setEditingLabel({ jti, value: current ?? '' })
+  }
+  const saveEdit = async () => {
+    const e = editingLabel()
+    if (!e)
+      return
+    try {
+      await doUpdateLabel({ jti: e.jti, label: e.value.trim() || null })
+      setEditingLabel(null)
+      await revalidate([listInvitesByForm.key])
+      toast.success('Label updated')
+    }
+    catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update label')
     }
   }
 
@@ -64,40 +114,157 @@ function Invites() {
                     </Button>
                   </A>
                 </div>
-                <div class="mt-3 flex flex-wrap items-center gap-3">
-                  <NumberField
-                    minValue={1}
-                    maxValue={100}
-                    value={countByForm()[f.id] ?? 1}
-                    onChange={v => setCountByForm(prev => ({ ...prev, [f.id]: Number(v || 1) }))}
-                    class="w-28"
-                  >
-                    <NumberFieldGroup>
-                      <NumberFieldInput aria-label="Invite count" />
-                      <NumberFieldDecrementTrigger />
-                      <NumberFieldIncrementTrigger />
-                    </NumberFieldGroup>
-                  </NumberField>
-                  <Button size="sm" onClick={() => handleGenerate(f.id, f.slug ?? undefined)}>
-                    <span class="i-ph:magic-wand-bold" />
-                    <span>Generate</span>
-                  </Button>
-                </div>
 
+                {/* Generator */}
                 <div class="mt-4">
-                  <div class="text-sm font-medium">Redeemed invites</div>
-                  <Show when={(byFormUsed()[f.id]?.used?.length ?? 0) > 0} fallback={<p class="text-xs text-muted-foreground">None yet.</p>}>
-                    <ul class="mt-2 text-xs space-y-1">
-                      <For each={byFormUsed()[f.id]?.used ?? []}>
-                        {u => (
-                          <li class="flex items-center justify-between gap-2">
-                            <code class="code">{u.jti.slice(0, 6)}…{u.jti.slice(-4)}</code>
-                            <span class="text-muted-foreground">{new Date(u.usedAt as any).toLocaleString()}</span>
-                          </li>
+                  <div class="text-sm font-medium">Generate invites</div>
+                  <div class="mt-2 flex flex-col gap-3">
+                    <div class="flex items-center gap-3">
+                      <NumberField
+                        minValue={1}
+                        maxValue={10}
+                        value={countByForm()[f.id] ?? 1}
+                        onChange={v => setCountByForm(prev => ({ ...prev, [f.id]: Number(v || 1) }))}
+                        class="w-28"
+                      >
+                        <NumberFieldGroup>
+                          <NumberFieldInput aria-label="Invite count" />
+                          <NumberFieldDecrementTrigger />
+                          <NumberFieldIncrementTrigger />
+                        </NumberFieldGroup>
+                      </NumberField>
+                      <Button size="sm" class="text-sm" onClick={() => handleGenerate(f.id, f.slug ?? undefined)}>
+                        <span>Generate & Copy</span>
+                      </Button>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <For each={Array.from({ length: Math.max(1, Math.min(10, Number(countByForm()[f.id] ?? 1))) })}>
+                        {(_, i) => (
+                          <div class="flex items-center gap-2">
+                            <div class="w-4 text-right text-xs text-muted-foreground">{i() + 1}.</div>
+                            <input
+                              class="h-8 max-w-md w-full border border-input rounded-md bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring"
+                              placeholder="Optional label"
+                              value={labelsByForm()[f.id]?.[i()] ?? ''}
+                              onInput={e => setLabelsByForm((prev) => {
+                                const arr = (prev[f.id] ?? []).slice()
+                                arr[i()] = e.currentTarget.value ?? ''
+                                return { ...prev, [f.id]: arr }
+                              })}
+                            />
+                          </div>
                         )}
                       </For>
-                    </ul>
-                  </Show>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Invites list */}
+                <div class="mt-6">
+                  <Tabs defaultValue="unused">
+                    <div class="flex items-center justify-between">
+                      <div class="text-sm font-medium">Invites</div>
+                      <TabsList>
+                        <TabsTrigger value="unused">Unused ({(byForm()[f.id]?.unused?.length ?? 0)})</TabsTrigger>
+                        <TabsTrigger value="used">Used ({(byForm()[f.id]?.used?.length ?? 0)})</TabsTrigger>
+                        <TabsTrigger value="revoked">Revoked ({(byForm()[f.id]?.revoked?.length ?? 0)})</TabsTrigger>
+                      </TabsList>
+                    </div>
+
+                    <TabsContent value="unused">
+                      <Show when={(byForm()[f.id]?.unused?.length ?? 0) > 0} fallback={<p class="text-xs text-muted-foreground">No unused invites.</p>}>
+                        <ul class="mt-2 space-y-2">
+                          <For each={byForm()[f.id]?.unused ?? []}>
+                            {inv => (
+                              <li class="flex items-center justify-between gap-3 border rounded-md bg-background p-2">
+                                <div class="min-w-0">
+                                  <div class="flex items-center gap-2">
+                                    <Show when={editingLabel()?.jti === inv.jti} fallback={<button class="font-medium hover:underline" onClick={() => startEdit(inv.jti, inv.label)}>{inv.label || 'Unnamed invite'}</button>}>
+                                      <input
+                                        class="h-7 w-56 border border-input rounded-md bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring"
+                                        value={editingLabel()?.value || ''}
+                                        onInput={e => setEditingLabel(cur => (cur ? { ...cur, value: e.currentTarget.value } : cur))}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter')
+                                            saveEdit()
+                                        }}
+                                      />
+                                      <Button size="sm" variant="ghost" class="ml-1" onClick={saveEdit}><span class="i-ph:check-bold" /></Button>
+                                      <Button size="sm" variant="ghost" onClick={() => setEditingLabel(null)}><span class="i-ph:x-bold" /></Button>
+                                    </Show>
+                                    <code class="code text-xs">{inv.code}</code>
+                                  </div>
+                                  <div class="mt-1 text-xs text-muted-foreground">Created {new Date(inv.createdAt as any).toLocaleString()}{inv.expAt ? ` · Expires ${new Date(inv.expAt as any).toLocaleString()}` : ''}</div>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                  <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
+                                    <span class="i-ph:copy-bold" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" title="Edit label" onClick={() => startEdit(inv.jti, inv.label)}>
+                                    <span class="i-ph:pencil-simple-line-bold" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" class="text-destructive" title="Revoke" onClick={() => handleRevoke(inv.jti)}>
+                                    <span class="i-ph:trash-simple-bold" />
+                                  </Button>
+                                </div>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    </TabsContent>
+
+                    <TabsContent value="used">
+                      <Show when={(byForm()[f.id]?.used?.length ?? 0) > 0} fallback={<p class="text-xs text-muted-foreground">No used invites yet.</p>}>
+                        <ul class="mt-2 space-y-2">
+                          <For each={byForm()[f.id]?.used ?? []}>
+                            {inv => (
+                              <li class="flex items-center justify-between gap-3 border rounded-md bg-muted/30 p-2">
+                                <div class="min-w-0">
+                                  <div class="flex items-center gap-2">
+                                    <div class="font-medium">{inv.label || 'Unnamed invite'}</div>
+                                    <code class="code text-xs">{inv.code}</code>
+                                  </div>
+                                  <div class="mt-1 text-xs text-muted-foreground">Used {new Date(inv.usedAt as any).toLocaleString()}</div>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                  <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
+                                    <span class="i-ph:copy-bold" />
+                                  </Button>
+                                </div>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    </TabsContent>
+
+                    <TabsContent value="revoked">
+                      <Show when={(byForm()[f.id]?.revoked?.length ?? 0) > 0} fallback={<p class="text-xs text-muted-foreground">No revoked invites.</p>}>
+                        <ul class="mt-2 space-y-2">
+                          <For each={byForm()[f.id]?.revoked ?? []}>
+                            {inv => (
+                              <li class="flex items-center justify-between gap-3 border rounded-md bg-muted/20 p-2">
+                                <div class="min-w-0">
+                                  <div class="flex items-center gap-2">
+                                    <div class="font-medium">{inv.label || 'Unnamed invite'}</div>
+                                    <code class="code text-xs">{inv.code}</code>
+                                  </div>
+                                  <div class="mt-1 text-xs text-muted-foreground">Revoked {new Date((inv as any).revokedAt).toLocaleString()}</div>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                  <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
+                                    <span class="i-ph:copy-bold" />
+                                  </Button>
+                                </div>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </div>
             )}

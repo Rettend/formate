@@ -116,15 +116,18 @@ export const Invites = sqliteTable('invites', {
   jti: text().primaryKey(),
   formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
   shortCode: text().notNull(),
+  label: text(),
   expAt: integer({ mode: 'timestamp' }),
   createdByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   usedAt: integer({ mode: 'timestamp' }),
   usedByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
+  revokedAt: integer({ mode: 'timestamp' }),
 }, t => [
   uniqueIndex('invites_short_code_unique').on(t.shortCode),
   index('invites_form_idx').on(t.formId),
   index('invites_used_idx').on(t.usedAt),
+  index('invites_revoked_idx').on(t.revokedAt),
 ])
 
 export type Invite = typeof Invites.$inferSelect
