@@ -1,8 +1,9 @@
 import type { RouteDefinition } from '@solidjs/router'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams } from '@solidjs/router'
-import { createMemo, createResource, createSignal, For, onMount, Show, Suspense } from 'solid-js'
+import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
+import FieldInput from '~/components/fields/FieldInput'
 import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
@@ -209,6 +210,16 @@ export default function Respondent() {
     }
   }
 
+  // Listen for custom submit event fired by FieldInput on Enter
+  onMount(() => {
+    const handler = () => {
+      if (canSubmit() && !loading())
+        void handleSubmit()
+    }
+    document.addEventListener('submit-active-turn', handler)
+    onCleanup(() => document.removeEventListener('submit-active-turn', handler))
+  })
+
   const handleReset = async () => {
     const convId = progress()?.conversationId
     if (!convId || !isOwner())
@@ -293,41 +304,7 @@ export default function Respondent() {
     }
   }
 
-  const FieldInput = (props: { field: any, id: string }) => (
-    <>
-      <Show when={props.field?.type === 'number'}>
-        <input
-          id={props.id}
-          type="number"
-          class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          placeholder={props.field?.label}
-        />
-      </Show>
-      <Show when={props.field?.type === 'long_text'}>
-        <textarea
-          id={props.id}
-          rows={4}
-          class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          placeholder={props.field?.label}
-        />
-      </Show>
-      <Show when={props.field?.type === 'date'}>
-        <input
-          id={props.id}
-          type="date"
-          class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-        />
-      </Show>
-      <Show when={['short_text', 'multiple_choice', 'checkbox', 'rating'].includes(props.field?.type as string)}>
-        <input
-          id={props.id}
-          type="text"
-          class="w-full border rounded-md bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          placeholder={props.field?.label}
-        />
-      </Show>
-    </>
-  )
+  // FieldInput extracted to components/fields/FieldInput
 
   // Sub-component for auto-starting (mounts only when conditions met)
   const AutoStarter = () => {
@@ -481,7 +458,7 @@ export default function Respondent() {
               <div class="space-y-4">
                 <For each={turns()}>
                   {t => (
-                    <div class="border rounded-lg bg-card p-4 text-card-foreground space-y-2" data-active-turn={t.status === 'awaiting_answer' ? '' : undefined}>
+                    <div class="border rounded-lg bg-card p-4 text-card-foreground space-y-4" data-active-turn={t.status === 'awaiting_answer' ? '' : undefined}>
                       <div>
                         <div class="text-sm font-medium">{t.questionJson?.label}</div>
                         <Show when={t.questionJson?.helpText}>
@@ -490,15 +467,31 @@ export default function Respondent() {
                       </div>
                       <Show when={t.status === 'answered'}>
                         <div class="mt-1 text-sm">
-                          {/* Render read-only answer */}
                           {(() => {
-                            const v = t.answerJson?.value
-                            return typeof v === 'string' ? v : JSON.stringify(v)
+                            const raw = t.answerJson?.value
+                            const q: any = t.questionJson
+                            const opts = Array.isArray(q?.options) ? q.options : []
+                            const idToLabel = new Map<string, string>(opts.map((o: any) => [o.id, o.label]))
+                            const mapVals = (vals: any[]) => vals.map(v => (typeof v === 'string' ? (idToLabel.get(v) ?? v) : String(v))).join(', ')
+                            if (Array.isArray(raw))
+                              return mapVals(raw)
+                            if (typeof raw === 'string' && raw.trim().startsWith('[') && raw.trim().endsWith(']')) {
+                              try {
+                                const arr = JSON.parse(raw)
+                                if (Array.isArray(arr))
+                                  return mapVals(arr)
+                              }
+                              catch {}
+                            }
+                            // For single choice values, map id to label too
+                            if (typeof raw === 'string' && idToLabel.has(raw))
+                              return idToLabel.get(raw)
+                            return typeof raw === 'string' ? raw : JSON.stringify(raw)
                           })()}
                         </div>
                       </Show>
                       <Show when={t.status === 'awaiting_answer'}>
-                        <div class="space-y-2">
+                        <div class="space-y-4">
                           <FieldInput field={t.questionJson} id={`answer-${t.id}`} />
                           <div class="flex items-center gap-2">
                             <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>

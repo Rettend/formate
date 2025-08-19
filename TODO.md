@@ -1,7 +1,7 @@
 # TODO
 
 - [x] shorten invite link
-- [ ] custom component rendering: form/id, r/slug
+- [x] custom component rendering: form/id, r/slug
 - [ ] better prompts, mom test god
 
 ## later

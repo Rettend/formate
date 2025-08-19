@@ -4,10 +4,10 @@ export const fieldTypeSchema = z.enum([
   'short_text',
   'long_text',
   'multiple_choice',
-  'checkbox',
+  'multi_select',
+  'boolean',
   'rating',
   'number',
-  'date',
 ])
 
 export const optionSchema = z.object({

@@ -479,16 +479,17 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
 
-  const system = `You are an expert adaptive survey designer. Given the form's goal and a transcript of previous Q/A, craft the single next best question.
+  const system = `You are an expert adaptive interview designer. Given the form's goal and a transcript of previous Q/A, craft the single next best question.
+Prefer conversational, open-ended prompts. Default to long_text unless there's a clear reason to use another type.
 You may also decide to end the form early if you have enough information or the respondent is clearly not engaging.`
 
   const user = {
     formGoalPrompt: prompt,
     planSummary: (form as any).settingsJson?.summary ?? undefined,
     constraints: {
-      allowedTypes: ['short_text', 'long_text', 'multiple_choice', 'checkbox', 'rating', 'number'],
+      allowedTypes: ['short_text', 'long_text', 'multiple_choice', 'boolean', 'rating', 'number', 'multi_select'],
       maxOptions: 6,
-      preferShortWhenUnsure: true,
+      preferLongTextByDefault: true,
     },
     earlyEnd: {
       allowed: Boolean(stopping.llmMayEnd),

@@ -4,9 +4,10 @@ import { z } from 'zod'
 import { generateStructured } from '~/lib/ai'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 
-const SYSTEM_INSTRUCTIONS = `You are an expert survey/form designer.
+const SYSTEM_INSTRUCTIONS = `You are an expert interview/form designer.
 Write a form summary, intro and outro.
-Design a concise seed question, this will be the first, warm-up question for the form.`
+Design a concise, open-ended seed question (type long_text by default) as the first, warm-up question for the form.
+Use only these field types: short_text, long_text, multiple_choice, multi_select, boolean, rating, number.`
 
 function buildPlanningMessages(prompt: string): ModelMessage[] {
   return [
