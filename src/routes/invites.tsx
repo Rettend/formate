@@ -18,30 +18,19 @@ function Invites() {
 
   const byFormUsed = createMemo(() => used()?.byForm ?? {})
 
-  const handleGenerate = async (formId: string, slug?: string) => {
+  const handleGenerate = async (formId: string, _slug?: string) => {
     const count = Math.max(1, Math.min(100, Number(countByForm()[formId] ?? 1)))
     try {
       const res = await gen({ formId, count })
-      const tokens = res?.tokens ?? []
-      if (tokens.length === 0) {
+      const codes = res?.codes ?? []
+      if (codes.length === 0) {
         toast.error('No tokens generated')
         return
       }
-      // Copy a list of URLs for convenience using current origin
       const base = typeof window !== 'undefined' ? window.location.origin : ''
-      const urls = tokens.map((t: any) => {
-        const code = t.code as string | undefined
-        if (code) {
-          // Prefer vanity when slug exists
-          if (slug)
-            return `${base}/r/${slug}-${code}`
-          return `${base}/r/${code}`
-        }
-        // Fallback to legacy token path
-        return `${base}/r/${slug || formId}?t=${encodeURIComponent(t.token)}`
-      })
+      const urls = codes.map((t: any) => `${base}/r/${t.code}`)
       await navigator.clipboard.writeText(urls.join('\n'))
-      toast.success(`Generated ${tokens.length} invite${tokens.length > 1 ? 's' : ''}. Links copied to clipboard.`)
+      toast.success(`Generated ${codes.length} invite${codes.length > 1 ? 's' : ''}. Links copied to clipboard.`)
     }
     catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to generate')

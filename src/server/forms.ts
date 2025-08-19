@@ -7,7 +7,7 @@ import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 import { encryptSecret } from './crypto'
 import { db } from './db'
-import { Forms, FormTestRuns, Invites } from './db/schema'
+import { Forms, FormTestRuns } from './db/schema'
 
 export interface ListFormsInput {
   page?: number
@@ -232,7 +232,7 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
 
   // First try by slug (preferred) — fetch without status filter, gate in app
   let rows = await db
-    .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+    .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId, slug: Forms.slug })
     .from(Forms)
     .where(eq(Forms.slug, slug))
   let form = rows.find(canView)
@@ -240,35 +240,10 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
   // Fallback: if the provided slug looks like an id, try by id — allows /r/:id during transition
   if (!form && /^[\w-]{16,24}$/u.test(slug)) {
     rows = await db
-      .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
+      .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId, slug: Forms.slug })
       .from(Forms)
       .where(eq(Forms.id, slug))
     form = rows.find(canView)
-  }
-
-  // Fallback 2: short invite code or vanity link
-  // Accept trailing Base58 code optionally preceded by a slug and dash.
-  if (!form) {
-    let code: string | undefined
-    const maybe = slug.split('-').pop() || ''
-    const base58 = /^[1-9A-HJ-NP-Za-km-z]{6,24}$/
-    if (base58.test(maybe))
-      code = maybe
-    else if (base58.test(slug))
-      code = slug
-
-    if (code) {
-      // Resolve invite to formId
-      const inviteRows = await db.select().from(Invites).where(eq(Invites.shortCode, code)).limit(1)
-      const inv = inviteRows[0] as any
-      if (inv) {
-        rows = await db
-          .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId })
-          .from(Forms)
-          .where(eq(Forms.id, inv.formId))
-        form = rows.find(canView)
-      }
-    }
   }
 
   return form ?? null

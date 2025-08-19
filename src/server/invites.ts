@@ -7,11 +7,8 @@ import { z } from 'zod'
 import { uuidV7Base58 } from '~/lib'
 import { generateShortCode } from '~/lib/invites'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
-import { auth } from './auth'
 import { db } from './db'
 import { Forms, Invites } from './db/schema'
-
-const PURPOSE = 'respondent-invite'
 
 function ensureOwner(form: { ownerUserId: string }, userId?: string) {
   if (!userId || form.ownerUserId !== userId)
@@ -39,11 +36,10 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
 
   const count = Math.max(1, Math.min(100, input.count ?? 1))
 
-  const tokens: Array<{ token: string, jti: string, expSec: number, code: string }> = []
+  const codes: Array<{ jti: string, expSec: number, code: string }> = []
   for (let i = 0; i < count; i++) {
-    // Create JWT first to get JTI binding
+    // Create unique id and short code
     const jti = uuidV7Base58()
-    const token = await auth.signJWT({ purpose: PURPOSE, sub: input.formId, jti }, { ttl: ttlSec })
 
     // Generate unique short code; retry on rare collision
     let code = generateShortCode(8)
@@ -62,9 +58,9 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
       createdByUserId: userId as any,
     })
 
-    tokens.push({ token, jti, expSec: ttlSec, code })
+    codes.push({ jti, expSec: ttlSec, code })
   }
-  return { tokens }
+  return { codes }
 }, 'invites:create')
 
 export const listUsedInviteTokens = query(async (raw: { formIds?: string[] } = {}) => {
@@ -103,44 +99,22 @@ export const listUsedInviteTokens = query(async (raw: { formIds?: string[] } = {
   return { forms: owned, byForm }
 }, 'invites:listUsed')
 
-const redeemSchema = z.union([
-  z.object({ token: z.string().min(10) }),
-  z.object({ code: z.string().min(6).max(24) }),
-])
+const redeemSchema = z.object({ code: z.string().min(6).max(24) })
 
-export const redeemInvite = action(async (raw: { token?: string, code?: string }) => {
+export const redeemInvite = action(async (raw: { code: string }) => {
   'use server'
   const event = getRequestEvent()
   const input = safeParseOrThrow(redeemSchema, raw, 'invites:redeem')
 
-  let formId: string | undefined
-  let jti: string | undefined
-  let exp: Date | undefined
-
-  if ('code' in input) {
-    // Lookup by short code
-    const [inv] = await db.select().from(Invites).where(eq(Invites.shortCode, input.code))
-    if (!inv)
-      throw new Error('Invalid invite')
-    formId = (inv as any).formId
-    jti = (inv as any).jti
-    if ((inv as any).usedAt)
-      throw new Error('Invite already used')
-    exp = (inv as any).expAt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
-  }
-  else {
-    const payload = await auth.verifyJWT<{ purpose?: string, sub?: string, jti?: string, exp?: number }>((input as any).token)
-    if (!payload || payload.purpose !== PURPOSE || !payload.sub || !payload.jti)
-      throw new Error('Invalid invite')
-    formId = payload.sub
-    jti = payload.jti
-    exp = payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000)
-
-    // Check Invites for usage if present; if not found, allow redeem (legacy token without pre-persisted row)
-    const [inv] = await db.select().from(Invites).where(eq(Invites.jti, jti))
-    if (inv && (inv as any).usedAt)
-      throw new Error('Invite already used')
-  }
+  // Lookup by short code
+  const [inv] = await db.select().from(Invites).where(eq(Invites.shortCode, input.code))
+  if (!inv)
+    throw new Error('Invalid invite')
+  const formId = (inv as any).formId as string
+  const jti = (inv as any).jti as string
+  if ((inv as any).usedAt)
+    throw new Error('Invite already used')
+  const exp = ((inv as any).expAt as Date | undefined) ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId!))
   if (!form)
@@ -167,3 +141,15 @@ export const redeemInvite = action(async (raw: { token?: string, code?: string }
   } as any)
   return { ok: true, formId, jti, exp: exp!.toISOString() }
 }, 'invites:redeem')
+
+// Resolve short code to formId without redeeming (useful for canonical redirects after an error)
+export const resolveInviteCode = query(async (raw: { code: string }) => {
+  'use server'
+  const { code } = safeParseOrThrow(z.object({ code: z.string().min(6).max(24) }), raw, 'invites:resolve')
+  const [inv] = await db.select().from(Invites).where(eq(Invites.shortCode, code))
+  if (!inv)
+    throw new Error('Not found')
+  const formId = (inv as any).formId as string
+  const [form] = await db.select({ slug: Forms.slug }).from(Forms).where(eq(Forms.id, formId))
+  return { formId, slug: (form as any)?.slug as string | undefined }
+}, 'invites:resolve')
