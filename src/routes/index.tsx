@@ -24,7 +24,8 @@ export default function Home() {
   return (
     <main class="min-h-screen flex flex-col">
       <header class="flex items-center justify-between gap-2 p-4">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <img src="/formate.svg" alt="Formate" class="h-6 w-6" />
           <span class="font-semibold tracking-tight">Formate</span>
         </div>
         <div class="flex items-center gap-2">

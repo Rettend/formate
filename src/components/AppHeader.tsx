@@ -15,8 +15,9 @@ export function AppHeader() {
     <header class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div class="mx-auto h-14 max-w-6xl flex items-center justify-between px-4">
         <div class="flex items-center gap-4">
-          <A href="/" class="font-semibold tracking-tight">
-            Formate
+          <A href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+            <img src="/formate.svg" alt="Formate" class="h-6 w-6" />
+            <span>Formate</span>
           </A>
         </div>
         <div class="flex items-center gap-2">
