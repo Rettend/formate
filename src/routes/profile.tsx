@@ -59,7 +59,7 @@ function Profile() {
               <h2 class="text-sm font-semibold">API keys</h2>
               <p class="mb-2 text-xs text-muted-foreground">Stored locally in your browser. We never send these to our servers.</p>
               <div class="space-y-3">
-                <For each={providers}>
+                <For each={providers.filter(p => p.placeholder)}>
                   {p => (
                     <div class="flex items-center gap-3">
                       <div class="w-36 text-sm font-medium">{p.title}</div>

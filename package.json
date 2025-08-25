@@ -19,7 +19,13 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.6",
+    "@ai-sdk/azure": "^2.0.20",
+    "@ai-sdk/cerebras": "^1.0.11",
     "@ai-sdk/google": "^2.0.8",
+    "@ai-sdk/groq": "^2.0.14",
+    "@ai-sdk/openai": "^2.0.20",
+    "@ai-sdk/xai": "^2.0.11",
     "@kobalte/core": "^0.13.11",
     "@libsql/client": "^0.15.12",
     "@rttnd/gau": "^0.3.7",

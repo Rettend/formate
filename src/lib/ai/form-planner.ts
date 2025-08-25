@@ -1,3 +1,4 @@
+import type { Provider } from './lists'
 import type { ModelMessage } from '~/lib/ai'
 import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { z } from 'zod'
@@ -21,7 +22,7 @@ function buildPlanningMessages(prompt: string): ModelMessage[] {
 
 export async function planFormWithLLM(options: {
   prompt: string
-  provider: string
+  provider: Provider
   modelId: string
   temperature?: number
   apiKey?: string
@@ -39,7 +40,7 @@ export async function planFormWithLLM(options: {
 
 export async function simulateTestRun(options: {
   plan: FormPlan
-  provider: string
+  provider: Provider
   modelId: string
   maxSteps?: number
   signal?: AbortSignal
@@ -75,7 +76,7 @@ export async function simulateTestRun(options: {
 export async function simulateTestStep(options: {
   plan: FormPlan
   index: number
-  provider: string
+  provider: Provider
   modelId: string
   apiKey?: string
 }): Promise<TestRunStep> {

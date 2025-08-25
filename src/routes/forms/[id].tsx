@@ -41,7 +41,7 @@ function FormDetail() {
   const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
   const [hasStoredKey, setHasStoredKey] = createSignal(false)
-  const [tab, setTab] = createSignal<'stopping' | 'access'>('stopping')
+  const [tab, setTab] = createSignal<'access' | 'stopping'>('access')
 
   const getDefaultStoppingFromForm = () => {
     const s: any = (form() as any)?.settingsJson?.stopping
@@ -173,118 +173,9 @@ function FormDetail() {
                     <CollapsibleCard title="Settings" defaultOpen>
                       <Tabs value={tab()} onChange={setTab} class="w-full">
                         <TabsList class="grid grid-cols-2 w-full">
-                          <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
                           <TabsTrigger value="access">Access</TabsTrigger>
+                          <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
                         </TabsList>
-
-                        <TabsContent value="stopping">
-                          <div class="p-3">
-                            <p class="mb-4 text-sm text-muted-foreground">Control when the interview ends.</p>
-                            <div class="grid gap-4 sm:grid-cols-2">
-                              <div
-                                class="flex flex-col gap-2"
-                                onFocusOut={(e) => {
-                                  const next = e.relatedTarget as Node | null
-                                  const curr = e.currentTarget as HTMLDivElement
-                                  if (next && curr.contains(next))
-                                    return
-                                  void handleSaveStopping()
-                                }}
-                              >
-                                <label class="text-sm">Max questions (hard limit)</label>
-                                <p class="text-xs text-muted-foreground">Includes the seed question.</p>
-                                <NumberField
-                                  class="w-full"
-                                  value={stopping()?.hardLimit.maxQuestions ?? 10}
-                                  onChange={(val) => {
-                                    const base = (val === '' || val == null)
-                                      ? 10
-                                      : (typeof val === 'number' ? val : Number(val))
-                                    const clamped = Math.min(50, Math.max(1, base))
-                                    setStopping(s => ({ ...(s as any), hardLimit: { maxQuestions: clamped } }))
-                                    saveStoppingDebounced()
-                                  }}
-                                  minValue={1}
-                                  maxValue={50}
-                                  step={1}
-                                >
-                                  <NumberFieldGroup>
-                                    <NumberFieldInput aria-label="Max questions (includes seed)" />
-                                    <NumberFieldDecrementTrigger />
-                                    <NumberFieldIncrementTrigger />
-                                  </NumberFieldGroup>
-                                </NumberField>
-                              </div>
-                              <div class="flex flex-col gap-2">
-                                <div class="flex items-start space-x-2">
-                                  <Checkbox
-                                    id="llm-may-end"
-                                    checked={stopping()?.llmMayEnd ?? true}
-                                    onChange={(v) => {
-                                      setStopping(s => ({ ...(s as any), llmMayEnd: Boolean(v) }))
-                                      void handleSaveStopping()
-                                    }}
-                                  />
-                                  <div class="grid gap-1.5 leading-none">
-                                    <Label for="llm-may-end-input">End early when appropriate</Label>
-                                    <p class="text-xs text-muted-foreground">Allow the LLM to end the interview early</p>
-                                  </div>
-                                </div>
-
-                                <div class="mt-3 border rounded-md p-3">
-                                  <span class="mb-2 block text-xs text-muted-foreground font-medium">Early end reasons</span>
-                                  <div class={`flex flex-col gap-3 ${!(stopping()?.llmMayEnd) ? 'opacity-60' : ''}`}>
-                                    <div class="flex items-start space-x-2">
-                                      <Checkbox
-                                        id="reason-enough-info"
-                                        disabled={!stopping()?.llmMayEnd}
-                                        checked={Boolean(stopping()?.endReasons.includes('enough_info'))}
-                                        onChange={(v) => {
-                                          setStopping((s) => {
-                                            const next = new Set((s?.endReasons ?? []) as any)
-                                            if (v)
-                                              next.add('enough_info')
-                                            else next.delete('enough_info')
-                                            const arr = Array.from(next)
-                                            return { ...(s as any), endReasons: arr as any }
-                                          })
-                                          void handleSaveStopping()
-                                        }}
-                                      />
-                                      <div class="grid gap-1.5 leading-none">
-                                        <Label for="reason-enough-info-input">Enough info</Label>
-                                        <p class="text-xs text-muted-foreground">End early when you have sufficient signal.</p>
-                                      </div>
-                                    </div>
-                                    <div class="flex items-start space-x-2">
-                                      <Checkbox
-                                        id="reason-trolling"
-                                        disabled={!stopping()?.llmMayEnd}
-                                        checked={Boolean(stopping()?.endReasons.includes('trolling'))}
-                                        onChange={(v) => {
-                                          setStopping((s) => {
-                                            const next = new Set((s?.endReasons ?? []) as any)
-                                            if (v)
-                                              next.add('trolling')
-                                            else next.delete('trolling')
-                                            const arr = Array.from(next)
-                                            return { ...(s as any), endReasons: arr as any }
-                                          })
-                                          void handleSaveStopping()
-                                        }}
-                                      />
-                                      <div class="grid gap-1.5 leading-none">
-                                        <Label for="reason-trolling-input">Respondent trolling</Label>
-                                        <p class="text-xs text-muted-foreground">Stop if responses are clearly low-signal.</p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </TabsContent>
-
                         <TabsContent value="access">
                           <div class="p-3">
                             <h2 class="text-sm font-semibold">Respondent Access</h2>
@@ -405,6 +296,113 @@ function FormDetail() {
                                   <Button type="submit" size="sm">Save</Button>
                                 </form>
                               </Show>
+                            </div>
+                          </div>
+                        </TabsContent>
+                        <TabsContent value="stopping">
+                          <div class="p-3">
+                            <p class="mb-4 text-sm text-muted-foreground">Control when the interview ends.</p>
+                            <div class="grid gap-4 sm:grid-cols-2">
+                              <div
+                                class="flex flex-col gap-2"
+                                onFocusOut={(e) => {
+                                  const next = e.relatedTarget as Node | null
+                                  const curr = e.currentTarget as HTMLDivElement
+                                  if (next && curr.contains(next))
+                                    return
+                                  void handleSaveStopping()
+                                }}
+                              >
+                                <label class="text-sm">Max questions (hard limit)</label>
+                                <p class="text-xs text-muted-foreground">Includes the seed question.</p>
+                                <NumberField
+                                  class="w-full"
+                                  value={stopping()?.hardLimit.maxQuestions ?? 10}
+                                  onChange={(val) => {
+                                    const base = (val === '' || val == null)
+                                      ? 10
+                                      : (typeof val === 'number' ? val : Number(val))
+                                    const clamped = Math.min(50, Math.max(1, base))
+                                    setStopping(s => ({ ...(s as any), hardLimit: { maxQuestions: clamped } }))
+                                    saveStoppingDebounced()
+                                  }}
+                                  minValue={1}
+                                  maxValue={50}
+                                  step={1}
+                                >
+                                  <NumberFieldGroup>
+                                    <NumberFieldInput aria-label="Max questions (includes seed)" />
+                                    <NumberFieldDecrementTrigger />
+                                    <NumberFieldIncrementTrigger />
+                                  </NumberFieldGroup>
+                                </NumberField>
+                              </div>
+                              <div class="flex flex-col gap-2">
+                                <div class="flex items-start space-x-2">
+                                  <Checkbox
+                                    id="llm-may-end"
+                                    checked={stopping()?.llmMayEnd ?? true}
+                                    onChange={(v) => {
+                                      setStopping(s => ({ ...(s as any), llmMayEnd: Boolean(v) }))
+                                      void handleSaveStopping()
+                                    }}
+                                  />
+                                  <div class="grid gap-1.5 leading-none">
+                                    <Label for="llm-may-end-input">End early when appropriate</Label>
+                                    <p class="text-xs text-muted-foreground">Allow the LLM to end the interview early</p>
+                                  </div>
+                                </div>
+
+                                <div class="mt-3 border rounded-md p-3">
+                                  <span class="mb-2 block text-xs text-muted-foreground font-medium">Early end reasons</span>
+                                  <div class={`flex flex-col gap-3 ${!(stopping()?.llmMayEnd) ? 'opacity-60' : ''}`}>
+                                    <div class="flex items-start space-x-2">
+                                      <Checkbox
+                                        id="reason-enough-info"
+                                        disabled={!stopping()?.llmMayEnd}
+                                        checked={Boolean(stopping()?.endReasons.includes('enough_info'))}
+                                        onChange={(v) => {
+                                          setStopping((s) => {
+                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            if (v)
+                                              next.add('enough_info')
+                                            else next.delete('enough_info')
+                                            const arr = Array.from(next)
+                                            return { ...(s as any), endReasons: arr as any }
+                                          })
+                                          void handleSaveStopping()
+                                        }}
+                                      />
+                                      <div class="grid gap-1.5 leading-none">
+                                        <Label for="reason-enough-info-input">Enough info</Label>
+                                        <p class="text-xs text-muted-foreground">End early when you have sufficient signal.</p>
+                                      </div>
+                                    </div>
+                                    <div class="flex items-start space-x-2">
+                                      <Checkbox
+                                        id="reason-trolling"
+                                        disabled={!stopping()?.llmMayEnd}
+                                        checked={Boolean(stopping()?.endReasons.includes('trolling'))}
+                                        onChange={(v) => {
+                                          setStopping((s) => {
+                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            if (v)
+                                              next.add('trolling')
+                                            else next.delete('trolling')
+                                            const arr = Array.from(next)
+                                            return { ...(s as any), endReasons: arr as any }
+                                          })
+                                          void handleSaveStopping()
+                                        }}
+                                      />
+                                      <div class="grid gap-1.5 leading-none">
+                                        <Label for="reason-trolling-input">Respondent trolling</Label>
+                                        <p class="text-xs text-muted-foreground">Stop if responses are clearly low-signal.</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </TabsContent>

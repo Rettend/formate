@@ -1,3 +1,4 @@
+import type { Provider } from '~/lib/ai/lists'
 import { action, query } from '@solidjs/router'
 import { and, desc, eq, like } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
@@ -384,7 +385,7 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   const { planFormWithLLM } = await import('~/lib/ai/form-planner')
   let plan: unknown
   try {
-    const res = await planFormWithLLM({ prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
+    const res = await planFormWithLLM({ prompt: input.prompt, provider: input.provider as Provider, modelId: input.modelId, temperature: input.temperature, apiKey: input.apiKey })
     plan = res.plan
   }
   catch (err) {
@@ -426,7 +427,7 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
   const { simulateTestRun } = await import('~/lib/ai/form-planner')
   let transcript: unknown
   try {
-    const res = await simulateTestRun({ plan, provider: input.provider, modelId: input.modelId, maxSteps: input.maxSteps, apiKey: input.apiKey })
+    const res = await simulateTestRun({ plan, provider: input.provider as Provider, modelId: input.modelId, maxSteps: input.maxSteps, apiKey: input.apiKey })
     transcript = res.transcript
   }
   catch (err) {
@@ -476,7 +477,7 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
   const { simulateTestStep } = await import('~/lib/ai/form-planner')
   let step
   try {
-    step = await simulateTestStep({ plan, index: input.index, provider: input.provider, modelId: input.modelId, apiKey: input.apiKey })
+    step = await simulateTestStep({ plan, index: input.index, provider: input.provider as Provider, modelId: input.modelId, apiKey: input.apiKey })
   }
   catch (err) {
     logAIError(err, 'testStep')

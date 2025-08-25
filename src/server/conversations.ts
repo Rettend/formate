@@ -1,3 +1,4 @@
+import type { Provider } from '~/lib/ai/lists'
 import process from 'node:process'
 import { action, query } from '@solidjs/router'
 import { and, asc, eq } from 'drizzle-orm'
@@ -613,7 +614,7 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
       answer: t.answerJson ? (t.answerJson as any).value : undefined,
     }))
 
-  const provider = (form as any).aiConfigJson?.provider as string | undefined
+  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
   const modelId = (form as any).aiConfigJson?.modelId as string | undefined
   const prompt = (form as any).aiConfigJson?.prompt as string | undefined
 

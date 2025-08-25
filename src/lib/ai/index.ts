@@ -1,18 +1,38 @@
 import type { ModelMessage } from 'ai'
+import type { Provider } from './lists'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createAzure } from '@ai-sdk/azure'
+import { createCerebras } from '@ai-sdk/cerebras'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createGroq } from '@ai-sdk/groq'
+import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject, streamObject, streamText } from 'ai'
-import { serverEnv } from '~/env/server'
 
 export { streamText }
 export type { ModelMessage }
 
-export function getProvider(provider: string, id: string, apiKey?: string) {
+export function getProvider(provider: Provider, id: string, apiKey?: string) {
   switch (provider) {
+    case 'formate': {
+      return createAzure({ apiKey })(id)
+    }
+    case 'openai': {
+      return createOpenAI({ apiKey })(id)
+    }
     case 'google': {
-      const key = apiKey || serverEnv.GOOGLE_GENERATIVE_AI_API_KEY
-      if (!key)
-        throw new Error('Missing Google Generative AI API key')
-      return createGoogleGenerativeAI({ apiKey: key })(id)
+      return createGoogleGenerativeAI({ apiKey })(id)
+    }
+    case 'xai': {
+      return createOpenAI({ apiKey })(id)
+    }
+    case 'anthropic': {
+      return createAnthropic({ apiKey })(id)
+    }
+    case 'groq': {
+      return createGroq({ apiKey })(id)
+    }
+    case 'cerebras': {
+      return createCerebras({ apiKey })(id)
     }
     default:
       throw new Error(`Unknown provider: ${provider}`)
@@ -21,7 +41,7 @@ export function getProvider(provider: string, id: string, apiKey?: string) {
 
 export async function streamChatText(options: {
   messages: ModelMessage[]
-  provider: string
+  provider: Provider
   modelId: string
   apiKey?: string
   abortSignal?: AbortSignal
@@ -33,19 +53,24 @@ export async function streamChatText(options: {
 export async function generateStructured(options: {
   schema: any
   messages: ModelMessage[]
-  provider: string
+  provider: Provider
   modelId: string
   apiKey?: string
   providerOptions?: any
 }) {
   const model = getProvider(options.provider, options.modelId, options.apiKey)
-  return generateObject({ model, schema: options.schema, messages: options.messages, providerOptions: options.providerOptions })
+  return generateObject({
+    model,
+    schema: options.schema,
+    messages: options.messages,
+    providerOptions: options.providerOptions,
+  })
 }
 
 export function streamStructured(options: {
   schema: any
   messages: ModelMessage[]
-  provider: string
+  provider: Provider
   modelId: string
   apiKey?: string
   providerOptions?: any

@@ -8,7 +8,6 @@ export const serverScheme = z.object({
   AUTH_SECRET: z.string(),
   TURSO_DB_URL: z.string(),
   TURSO_AUTH_TOKEN: z.string(),
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
 })
 
 export const clientScheme = z.object({
