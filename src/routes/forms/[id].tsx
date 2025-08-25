@@ -1,8 +1,9 @@
 import type { RouteDefinition } from '@solidjs/router'
+import type { VoidComponent } from 'solid-js'
 import { Protected } from '@rttnd/gau/client/solid'
 import { debounce } from '@solid-primitives/scheduled'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams, useSubmissions } from '@solidjs/router'
-import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js'
+import { createMemo, createSignal, onMount, Show, untrack } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import CollapsibleCard from '~/components/CollapsibleCard'
 import { LLMBuilder } from '~/components/forms/LLMBuilder'
@@ -12,6 +13,7 @@ import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, unpublishForm } from '~/server/forms'
+import { useUIStore } from '~/stores/ui'
 
 export const route = {
   preload({ params }) {
@@ -22,6 +24,7 @@ export const route = {
 export default Protected(() => <FormDetail />, '/')
 
 function FormDetail() {
+  const { ui, actions } = useUIStore()
   const params = useParams()
   const id = createMemo(() => params.id)
   const nav = useNavigate()
@@ -40,12 +43,11 @@ function FormDetail() {
   const [saving, setSaving] = createSignal(false)
   const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
-  const [hasStoredKey, setHasStoredKey] = createSignal(false)
-  const [tab, setTab] = createSignal<'access' | 'stopping'>('access')
-  const [selectedProvider, setSelectedProvider] = createSignal<string | null>(null)
+  const tab = createMemo<'access' | 'stopping'>(() => ui.formsUi?.[id()]?.settingsTab ?? 'access')
+  const hasStoredKey = createMemo(() => Boolean(form()?.hasProviderKey))
 
   const getDefaultStoppingFromForm = () => {
-    const s: any = (form() as any)?.settingsJson?.stopping
+    const s = form()?.settingsJson?.stopping
     return {
       hardLimit: { maxQuestions: Math.min(50, Math.max(1, Number(s?.hardLimit?.maxQuestions ?? 10))) },
       llmMayEnd: Boolean(s?.llmMayEnd ?? true),
@@ -53,13 +55,15 @@ function FormDetail() {
     }
   }
 
-  createEffect(() => {
-    if (form() && !stopping())
-      setStopping(getDefaultStoppingFromForm())
-    // Track if a key is present on the form (we never show the raw key)
-    if (form())
-      setHasStoredKey(Boolean((form() as any)?.hasProviderKey))
-  })
+  const defaultStopping = createMemo(() => getDefaultStoppingFromForm())
+  const effectiveStopping = createMemo(() => stopping() ?? defaultStopping())
+
+  const NullRedirector: VoidComponent = () => {
+    onMount(() => {
+      nav('/forms')
+    })
+    return null
+  }
 
   const handleSaveStopping = async () => {
     const s = stopping()
@@ -72,11 +76,6 @@ function FormDetail() {
   const saveStoppingDebounced = debounce(() => {
     untrack(() => handleSaveStopping())
   }, 600)
-
-  createEffect(() => {
-    if (form() === null)
-      nav('/forms')
-  })
 
   const handleTogglePublish = async () => {
     const status = form()?.status
@@ -164,16 +163,29 @@ function FormDetail() {
               </div>
             </div>
           </Show>
+          <Show when={form() === null}>
+            <NullRedirector />
+          </Show>
           <Show when={form()} keyed fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
             {f => (
               <LLMBuilder
                 form={f}
                 onSavingChange={setSaving}
-                onProviderChange={setSelectedProvider}
                 settingsSlot={(
                   <div>
-                    <CollapsibleCard title="Settings" defaultOpen>
-                      <Tabs value={tab()} onChange={setTab} class="w-full">
+                    <CollapsibleCard
+                      title="Settings"
+                      defaultOpen
+                      open={ui.formsUi?.[id()]?.settingsOpen}
+                      onOpenChange={open => actions.setFormSettingsOpen(id(), open)}
+                    >
+                      <Tabs
+                        value={tab()}
+                        onChange={(v) => {
+                          actions.setFormSettingsTab(id(), v as 'access' | 'stopping')
+                        }}
+                        class="w-full"
+                      >
                         <TabsList class="grid grid-cols-2 w-full">
                           <TabsTrigger value="access">Access</TabsTrigger>
                           <TabsTrigger value="stopping">Stopping Criteria</TabsTrigger>
@@ -186,7 +198,7 @@ function FormDetail() {
                             <div class="mb-6 flex items-start space-x-2">
                               <Checkbox
                                 id="allow-oauth-respondents"
-                                checked={Boolean(((f as any).settingsJson as any)?.access?.allowOAuth ?? true)}
+                                checked={Boolean(f?.settingsJson?.access?.allowOAuth ?? true)}
                                 onChange={(v) => {
                                   // Persist into settingsJson.access.allowOAuth
                                   void saveAccess({ formId: id(), access: { allowOAuth: Boolean(v) } })
@@ -220,7 +232,7 @@ function FormDetail() {
                                   max={10}
                                   step={1}
                                   class="h-10 w-28 flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
-                                  value={Number((((form() as any)?.settingsJson as any)?.access?.respondentBackLimit ?? 0))}
+                                  value={Number(f?.settingsJson?.access?.respondentBackLimit ?? 0)}
                                   onInput={() => { /* local optimistic UI handled by form refresh */ }}
                                 />
                                 <Button type="submit" size="sm">Save</Button>
@@ -248,15 +260,15 @@ function FormDetail() {
                                   name="slug"
                                   placeholder="my-form-name"
                                   class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
-                                  value={(form() as any)?.slug || ''}
+                                  value={form()?.slug || ''}
                                   onInput={() => {
                                     // optimistic local reflect only
                                   }}
                                 />
                                 <Button type="submit" size="sm">Save</Button>
                               </form>
-                              <Show when={(form() as any)?.slug}>
-                                <p class="mt-2 text-xs text-muted-foreground">Preview: <code class="code">/r/{(form() as any)?.slug}</code></p>
+                              <Show when={form()?.slug}>
+                                <p class="mt-2 text-xs text-muted-foreground">Preview: <code class="code">/r/{form()?.slug}</code></p>
                               </Show>
                             </div>
 
@@ -264,7 +276,7 @@ function FormDetail() {
                             <p class="mb-2 text-sm text-muted-foreground">
                               Stored encrypted on the server and used when respondents answer this form. It's never exposed to the respondent's browser.
                             </p>
-                            <Show when={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}>
+                            <Show when={f?.aiConfigJson?.provider === 'formate'}>
                               <div class="mb-2 border rounded-md bg-muted/20 p-2 text-xs text-muted-foreground">
                                 Formate provider uses a server-managed LLM api key. No key is needed here.
                               </div>
@@ -285,7 +297,7 @@ function FormDetail() {
                                   class="flex items-center gap-2"
                                   onSubmit={(e) => {
                                     e.preventDefault()
-                                    const currentProvider = selectedProvider() ?? (f as any)?.aiConfigJson?.provider
+                                    const currentProvider = f?.aiConfigJson?.provider
                                     if (currentProvider === 'formate')
                                       return
                                     const v = providerKeyInput().trim()
@@ -304,9 +316,9 @@ function FormDetail() {
                                     class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
                                     value={providerKeyInput()}
                                     onInput={e => setProviderKeyInput((e.currentTarget as HTMLInputElement).value)}
-                                    disabled={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}
+                                    disabled={f?.aiConfigJson?.provider === 'formate'}
                                   />
-                                  <Button type="submit" size="sm" disabled={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}>Save</Button>
+                                  <Button type="submit" size="sm" disabled={f?.aiConfigJson?.provider === 'formate'}>Save</Button>
                                 </form>
                               </Show>
                             </div>
@@ -330,7 +342,7 @@ function FormDetail() {
                                 <p class="text-xs text-muted-foreground">Includes the seed question.</p>
                                 <NumberField
                                   class="w-full"
-                                  value={stopping()?.hardLimit.maxQuestions ?? 10}
+                                  value={effectiveStopping().hardLimit.maxQuestions}
                                   onChange={(val) => {
                                     const base = (val === '' || val == null)
                                       ? 10
@@ -354,7 +366,7 @@ function FormDetail() {
                                 <div class="flex items-start space-x-2">
                                   <Checkbox
                                     id="llm-may-end"
-                                    checked={stopping()?.llmMayEnd ?? true}
+                                    checked={effectiveStopping().llmMayEnd}
                                     onChange={(v) => {
                                       setStopping(s => ({ ...(s as any), llmMayEnd: Boolean(v) }))
                                       void handleSaveStopping()
@@ -368,20 +380,20 @@ function FormDetail() {
 
                                 <div class="mt-3 border rounded-md p-3">
                                   <span class="mb-2 block text-xs text-muted-foreground font-medium">Early end reasons</span>
-                                  <div class={`flex flex-col gap-3 ${!(stopping()?.llmMayEnd) ? 'opacity-60' : ''}`}>
+                                  <div class={`flex flex-col gap-3 ${!(effectiveStopping().llmMayEnd) ? 'opacity-60' : ''}`}>
                                     <div class="flex items-start space-x-2">
                                       <Checkbox
                                         id="reason-enough-info"
-                                        disabled={!stopping()?.llmMayEnd}
-                                        checked={Boolean(stopping()?.endReasons.includes('enough_info'))}
+                                        disabled={!effectiveStopping().llmMayEnd}
+                                        checked={Boolean(effectiveStopping().endReasons.includes('enough_info'))}
                                         onChange={(v) => {
                                           setStopping((s) => {
-                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            const next = new Set((s?.endReasons ?? []))
                                             if (v)
                                               next.add('enough_info')
                                             else next.delete('enough_info')
                                             const arr = Array.from(next)
-                                            return { ...(s as any), endReasons: arr as any }
+                                            return { ...(s as any), endReasons: arr }
                                           })
                                           void handleSaveStopping()
                                         }}
@@ -394,16 +406,16 @@ function FormDetail() {
                                     <div class="flex items-start space-x-2">
                                       <Checkbox
                                         id="reason-trolling"
-                                        disabled={!stopping()?.llmMayEnd}
-                                        checked={Boolean(stopping()?.endReasons.includes('trolling'))}
+                                        disabled={!effectiveStopping().llmMayEnd}
+                                        checked={Boolean(effectiveStopping().endReasons.includes('trolling'))}
                                         onChange={(v) => {
                                           setStopping((s) => {
-                                            const next = new Set((s?.endReasons ?? []) as any)
+                                            const next = new Set((s?.endReasons ?? []))
                                             if (v)
                                               next.add('trolling')
                                             else next.delete('trolling')
                                             const arr = Array.from(next)
-                                            return { ...(s as any), endReasons: arr as any }
+                                            return { ...(s as any), endReasons: arr }
                                           })
                                           void handleSaveStopping()
                                         }}

@@ -7,6 +7,7 @@ export interface CollapsibleCardProps {
   title: JSX.Element | string
   description?: JSX.Element | string
   defaultOpen?: boolean
+  open?: boolean
   disabled?: boolean
   class?: string
   contentClass?: string
@@ -29,6 +30,7 @@ export function CollapsibleCard(allProps: CollapsibleCardProps) {
     'description',
     'defaultOpen',
     'disabled',
+    'open',
     'class',
     'contentClass',
     'onOpenChange',
@@ -39,6 +41,7 @@ export function CollapsibleCard(allProps: CollapsibleCardProps) {
     <Collapsible
       {...rest}
       defaultOpen={props.defaultOpen}
+      open={props.open}
       disabled={props.disabled}
       onOpenChange={props.onOpenChange}
       class={cn('border rounded-lg bg-card text-card-foreground', props.class)}

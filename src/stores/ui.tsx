@@ -9,6 +9,10 @@ import { isServer } from 'solid-js/web'
 interface StoreState {
   mode: Mode
   apiKeys: Record<string, string>
+  formsUi?: Record<string, {
+    settingsTab?: 'access' | 'stopping'
+    settingsOpen?: boolean
+  }>
 }
 
 type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
@@ -16,6 +20,8 @@ type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
 interface UIStoreActions {
   setApiKey: (provider: string, value: string) => void
   deleteApiKey: (provider: string) => void
+  setFormSettingsTab: (formId: string, tab: 'access' | 'stopping') => void
+  setFormSettingsOpen: (formId: string, open: boolean) => void
 }
 
 const StoreContext = createContext<StoreContextType>()
@@ -24,7 +30,11 @@ export function UIStoreProvider(props: ParentProps) {
   const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
   const storage = isBrowser ? window.localStorage : undefined
 
-  const [baseState, setBaseState] = createStore<StoreState>({ mode: 'system', apiKeys: {} })
+  const [baseState, setBaseState] = createStore<StoreState>({
+    mode: 'system',
+    apiKeys: {},
+    formsUi: {},
+  })
   const [state, setState] = makePersisted([baseState, setBaseState], {
     name: 'ui',
     storage,
@@ -74,6 +84,16 @@ export function useUIStore() {
       setUI('apiKeys', produce((apiKeys) => {
         delete (apiKeys)[provider]
       }))
+    },
+    setFormSettingsTab(formId: string, tab: 'access' | 'stopping') {
+      setUI('formsUi', prev => prev ?? {})
+      setUI('formsUi', formId, prev => prev ?? {})
+      setUI('formsUi', formId, 'settingsTab', tab)
+    },
+    setFormSettingsOpen(formId: string, open: boolean) {
+      setUI('formsUi', prev => prev ?? {})
+      setUI('formsUi', formId, prev => prev ?? {})
+      setUI('formsUi', formId, 'settingsOpen', open)
     },
   }
 
