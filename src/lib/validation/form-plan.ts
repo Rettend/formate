@@ -22,7 +22,7 @@ export const fieldValidationSchema = z.object({
 }).partial()
 
 export const formFieldSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).describe('Should be descriptive, not just a random ID'),
   label: z.string().min(1),
   type: fieldTypeSchema,
   required: z.boolean().default(true),

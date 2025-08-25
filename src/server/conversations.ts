@@ -726,9 +726,11 @@ Return a question for the user and a plan for the next turn. You may also decide
       return { kind: 'end', reason: obj.end.reason, modelId }
   }
 
+  const incoming = obj.question
+  const incomingId = (incoming && typeof incoming.id === 'string' && incoming.id.trim().length > 0) ? String(incoming.id).trim() : undefined
   const question = {
-    ...(obj as any).question,
-    id: uuidV7Base58(),
+    ...incoming,
+    id: incomingId ?? uuidV7Base58(),
   }
   const plan = (obj as any).plan as string | undefined
 

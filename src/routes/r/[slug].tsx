@@ -1,6 +1,7 @@
 import type { RouteDefinition } from '@solidjs/router'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams } from '@solidjs/router'
 import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js'
+import { produce } from 'solid-js/store'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import FieldInput from '~/components/fields/FieldInput'
@@ -89,10 +90,6 @@ export default function Respondent() {
     if (!isOwner() && typeof (res as any)?.remainingBack === 'number') {
       setSession('byConversation', convId, prev => prev ?? ({}))
       setSession('byConversation', convId, 'backRemaining', (res as any).remainingBack)
-      const uid = userId()
-      const fid = formId()
-      if (uid && fid)
-        setLocal('byForm', fid, 'byUser', uid, 'backRemaining', (res as any).remainingBack)
     }
     return res
   })
@@ -131,7 +128,6 @@ export default function Respondent() {
           const cid = conv.id
           setSession('byConversation', cid, prev => prev ?? ({}))
           setSession('byConversation', cid, 'backRemaining', initVal)
-          setLocal('byForm', f.id, 'byUser', key, 'backRemaining', initVal)
         }
         await revalidate([listTurns.key])
         // Clear any pending used-invite hint once we successfully start
@@ -189,10 +185,6 @@ export default function Respondent() {
           setSession('byConversation', cid, prev => prev ?? ({}))
           setSession('byConversation', cid, 'backRemaining', remaining ?? 0)
         }
-        const uid = userId()
-        const fid = formId()
-        if (uid && fid)
-          setLocal('byForm', fid, 'byUser', uid, 'backRemaining', remaining ?? 0)
       }
       await revalidate([listTurns.key])
       queueMicrotask(() => {
@@ -221,6 +213,13 @@ export default function Respondent() {
     setLoading(true)
     try {
       await answer({ conversationId: convId, turnId: turn.id, value })
+      setLocal('draftsByConversation', prev => prev ?? ({}))
+      setLocal('draftsByConversation', convId, prev => prev ?? ({}))
+      setLocal('draftsByConversation', convId, produce((byKey) => {
+        const fieldId = (turn as any)?.questionJson?.id
+        const k = `${turn.id}:${fieldId}`
+        delete (byKey as any)[k]
+      }))
       setPrefillByTurnId((prev) => {
         const { [turn.id]: _removed, ...rest } = prev
         return rest
@@ -276,6 +275,10 @@ export default function Respondent() {
     setLoading(true)
     try {
       const res = await reset({ conversationId: convId })
+      setLocal('draftsByConversation', prev => prev ?? ({}))
+      setLocal('draftsByConversation', produce((all) => {
+        delete (all as any)[convId]
+      }))
       await revalidate([listTurns.key])
       queueMicrotask(() => {
         const targetId = res?.firstTurnId ? `#answer-${res.firstTurnId}` : '[data-active-turn] textarea, [data-active-turn] input'
@@ -568,7 +571,7 @@ export default function Respondent() {
                                   <span>Back</span>
                                 </Button>
                               </Show>
-                              <Show when={!isOwner() && backRemaining() !== null}>
+                              <Show when={!isOwner() && Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0 && backRemaining() !== null}>
                                 <div class="text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
                               </Show>
                               <Show when={isOwner()}>
@@ -610,7 +613,7 @@ export default function Respondent() {
                         <span class="i-ph:arrow-left-bold" />
                         <span>Back</span>
                       </Button>
-                      <Show when={!isOwner() && backRemaining() !== null}>
+                      <Show when={!isOwner() && Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0 && backRemaining() !== null}>
                         <div class="text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
                       </Show>
                       <Show when={isOwner()}>
