@@ -406,7 +406,15 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
     logAIError(err, 'planWithAI')
     throw new Error(aiErrorToMessage(err))
   }
-  const safePlan = formPlanSchema.parse(plan)
+
+  const existing = (form as any).settingsJson ?? {}
+  const merged = {
+    ...existing,
+    ...plan as any,
+    access: (existing as any).access,
+    stopping: (existing as any).stopping,
+  }
+  const safePlan = formPlanSchema.parse(merged)
 
   await db
     .update(Forms)

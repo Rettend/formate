@@ -6,6 +6,7 @@ import { createCerebras } from '@ai-sdk/cerebras'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createGroq } from '@ai-sdk/groq'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createXai } from '@ai-sdk/xai'
 import { generateObject, streamObject, streamText } from 'ai'
 import { serverEnv } from '~/env/server'
 
@@ -27,7 +28,7 @@ export function getProvider(provider: Provider, id: string, apiKey?: string) {
       return createGoogleGenerativeAI({ apiKey })(id)
     }
     case 'xai': {
-      return createOpenAI({ apiKey })(id)
+      return createXai({ apiKey })(id)
     }
     case 'anthropic': {
       return createAnthropic({ apiKey })(id)

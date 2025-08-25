@@ -16,7 +16,7 @@ import { createTestRun, getForm, planWithAI, runTestStep, saveFormPrompt } from 
 import { useUIStore } from '~/stores/ui'
 import { decryptApiKey } from '~/utils/crypto'
 
-export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolean) => void, settingsSlot?: JSX.Element }) {
+export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolean) => void, settingsSlot?: JSX.Element, onProviderChange?: (provider: Provider | null) => void }) {
   const { ui } = useUIStore()
   const doPlan = useAction(planWithAI)
   const doTestRun = useAction(createTestRun)
@@ -264,9 +264,11 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
                   if (provider) {
                     const first = (models[provider] ?? [])[0]?.value ?? null
                     setModel(first)
+                    props.onProviderChange?.(provider)
                   }
                   else {
                     setModel(null)
+                    props.onProviderChange?.(null)
                   }
                 }}
                 placeholder="Select provider"

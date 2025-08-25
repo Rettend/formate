@@ -3,7 +3,7 @@ import type { ModelMessage } from '~/lib/ai'
 import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { z } from 'zod'
 import { generateStructured } from '~/lib/ai'
-import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
+import { formFieldSchema, formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 
 const SYSTEM_INSTRUCTIONS = `You are an expert interview/form designer.
 Write a a form intro, outro, and form summary for the respondents.
@@ -20,6 +20,13 @@ function buildPlanningMessages(prompt: string): ModelMessage[] {
   ]
 }
 
+const formPlanCoreSchema = z.object({
+  summary: formPlanSchema.shape.summary,
+  intro: formPlanSchema.shape.intro,
+  outro: formPlanSchema.shape.outro,
+  seed: formFieldSchema,
+})
+
 export async function planFormWithLLM(options: {
   prompt: string
   provider: Provider
@@ -28,7 +35,7 @@ export async function planFormWithLLM(options: {
   apiKey?: string
 }): Promise<{ plan: FormPlan, tokensIn?: number, tokensOut?: number }> {
   const { object } = await generateStructured({
-    schema: formPlanSchema,
+    schema: formPlanCoreSchema,
     messages: buildPlanningMessages(options.prompt),
     provider: options.provider,
     modelId: options.modelId,

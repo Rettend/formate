@@ -42,6 +42,7 @@ function FormDetail() {
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
   const [hasStoredKey, setHasStoredKey] = createSignal(false)
   const [tab, setTab] = createSignal<'access' | 'stopping'>('access')
+  const [selectedProvider, setSelectedProvider] = createSignal<string | null>(null)
 
   const getDefaultStoppingFromForm = () => {
     const s: any = (form() as any)?.settingsJson?.stopping
@@ -168,6 +169,7 @@ function FormDetail() {
               <LLMBuilder
                 form={f}
                 onSavingChange={setSaving}
+                onProviderChange={setSelectedProvider}
                 settingsSlot={(
                   <div>
                     <CollapsibleCard title="Settings" defaultOpen>
@@ -262,7 +264,7 @@ function FormDetail() {
                             <p class="mb-2 text-sm text-muted-foreground">
                               Stored encrypted on the server and used when respondents answer this form. It's never exposed to the respondent's browser.
                             </p>
-                            <Show when={(f as any)?.aiConfigJson?.provider === 'formate'}>
+                            <Show when={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}>
                               <div class="mb-2 border rounded-md bg-muted/20 p-2 text-xs text-muted-foreground">
                                 Formate provider uses a server-managed LLM api key. No key is needed here.
                               </div>
@@ -283,7 +285,8 @@ function FormDetail() {
                                   class="flex items-center gap-2"
                                   onSubmit={(e) => {
                                     e.preventDefault()
-                                    if ((f as any)?.aiConfigJson?.provider === 'formate')
+                                    const currentProvider = selectedProvider() ?? (f as any)?.aiConfigJson?.provider
+                                    if (currentProvider === 'formate')
                                       return
                                     const v = providerKeyInput().trim()
                                     if (v.length === 0)
@@ -301,9 +304,9 @@ function FormDetail() {
                                     class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
                                     value={providerKeyInput()}
                                     onInput={e => setProviderKeyInput((e.currentTarget as HTMLInputElement).value)}
-                                    disabled={(f as any)?.aiConfigJson?.provider === 'formate'}
+                                    disabled={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}
                                   />
-                                  <Button type="submit" size="sm" disabled={(f as any)?.aiConfigJson?.provider === 'formate'}>Save</Button>
+                                  <Button type="submit" size="sm" disabled={(selectedProvider() ?? (f as any)?.aiConfigJson?.provider) === 'formate'}>Save</Button>
                                 </form>
                               </Show>
                             </div>
