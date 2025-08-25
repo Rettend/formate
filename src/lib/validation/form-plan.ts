@@ -58,6 +58,10 @@ export const formPlanSchema = z.object({
   intro: z.string().optional(),
   outro: z.string().optional(),
   seed: formFieldSchema,
+  access: z.object({
+    allowOAuth: z.boolean().optional(),
+    respondentBackLimit: z.number().int().min(0).max(10).optional(),
+  }).optional(),
   stopping: z.object({
     hardLimit: z.object({
       maxQuestions: z.number().int().min(1).max(50).default(10),

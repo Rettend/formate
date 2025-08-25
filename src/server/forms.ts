@@ -493,8 +493,10 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
   return { ok: true }
 }, 'forms:saveStopping')
 
-// Access mode: whether respondents may complete via OAuth sign-in in addition to invites
-const accessSchema = z.object({ allowOAuth: z.boolean() })
+const accessSchema = z.object({
+  allowOAuth: z.boolean().optional(),
+  respondentBackLimit: z.coerce.number().int().min(0).max(10).optional(),
+})
 
 export const saveFormAccess = action(async (raw: { formId: string, access: z.infer<typeof accessSchema> }) => {
   'use server'
@@ -510,7 +512,13 @@ export const saveFormAccess = action(async (raw: { formId: string, access: z.inf
     throw new Error('Not found')
 
   const existing = (form as any).settingsJson ?? {}
-  const next = { ...existing, access: { ...(existing.access || {}), allowOAuth: Boolean(input.access.allowOAuth) } }
+  const prevAccess = (existing as any).access || {}
+  const nextAccess = { ...prevAccess }
+  if (typeof input.access.allowOAuth === 'boolean')
+    (nextAccess as any).allowOAuth = input.access.allowOAuth
+  if (typeof input.access.respondentBackLimit === 'number')
+    (nextAccess as any).respondentBackLimit = input.access.respondentBackLimit
+  const next = { ...existing, access: nextAccess }
 
   const [updated] = await db
     .update(Forms)

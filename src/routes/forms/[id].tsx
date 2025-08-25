@@ -306,6 +306,34 @@ function FormDetail() {
                               </div>
                             </div>
 
+                            <div class="mb-6">
+                              <label class="text-sm font-medium">Respondent back steps</label>
+                              <p class="mb-2 text-xs text-muted-foreground">Allow respondents to go back and change their last answer. Owners always have full controls.</p>
+                              <form
+                                class="flex items-center gap-2"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  const input = e.currentTarget.querySelector('input[name=respondentBackLimit]') as HTMLInputElement | null
+                                  const v = Number((input?.value ?? '').trim())
+                                  const value = Number.isFinite(v) ? Math.max(0, Math.min(10, Math.trunc(v))) : 0
+                                  void saveAccess({ formId: id(), access: { respondentBackLimit: value } })
+                                    .then(() => revalidate([getForm.key]))
+                                }}
+                              >
+                                <input
+                                  type="number"
+                                  name="respondentBackLimit"
+                                  min={0}
+                                  max={10}
+                                  step={1}
+                                  class="h-10 w-28 flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
+                                  value={Number((((form() as any)?.settingsJson as any)?.access?.respondentBackLimit ?? 0))}
+                                  onInput={() => { /* local optimistic UI handled by form refresh */ }}
+                                />
+                                <Button type="submit" size="sm">Save</Button>
+                              </form>
+                            </div>
+
                             <div class="mb-4">
                               <label class="text-sm font-medium">Public name (slug)</label>
                               <p class="mb-2 text-xs text-muted-foreground">Used in the URL. Only lowercase letters, numbers and hyphens. Example: <code class="code">/r/my-form</code></p>

@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "private": true,
   "packageManager": "bun@1.2.20",
+  "description": "Formate is an LLM-powered form builder for designing and running conversational, interview-style surveys.",
   "engines": {
     "node": ">=20"
   },
@@ -18,7 +19,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.7",
+    "@ai-sdk/google": "^2.0.8",
     "@kobalte/core": "^0.13.11",
     "@libsql/client": "^0.15.12",
     "@rttnd/gau": "^0.3.7",
@@ -28,7 +29,7 @@
     "@solidjs/router": "^0.15.3",
     "@solidjs/start": "^1.1.7",
     "@unocss/reset": "^66.4.2",
-    "ai": "^5.0.17",
+    "ai": "^5.0.23",
     "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "drizzle-orm": "^0.44.4",
@@ -50,14 +51,14 @@
     "@unocss/preset-icons": "^66.4.2",
     "clsx": "^2.1.1",
     "drizzle-kit": "^0.31.4",
-    "eslint": "^9.33.0",
+    "eslint": "^9.34.0",
     "eslint-plugin-format": "^1.0.1",
     "eslint-plugin-solid": "^0.14.5",
     "tailwind-merge": "^3.3.1",
-    "taze": "^19.1.0",
+    "taze": "^19.3.0",
     "unocss-preset-animations": "^1.2.1",
     "unocss-preset-shadcn": "^0.5.0",
-    "zod": "^4.0.17"
+    "zod": "^4.1.1"
   },
   "trustedDependencies": [
     "@parcel/watcher"

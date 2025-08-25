@@ -28,7 +28,10 @@ function Invites() {
     const count = Math.max(1, Math.min(10, Number(countByForm()[formId] ?? 1)))
     const labels = (labelsByForm()[formId] ?? []).slice(0, count)
     try {
-      const res = await gen({ formId, entries: labels.map(l => ({ label: l?.trim() ? l.trim() : null })) })
+      const payload = labels.length > 0
+        ? { formId, entries: labels.map(l => ({ label: l?.trim() ? l.trim() : null })) }
+        : { formId, count }
+      const res = await gen(payload as any)
       const codes = res?.codes ?? []
       if (codes.length === 0) {
         toast.error('No invites generated')

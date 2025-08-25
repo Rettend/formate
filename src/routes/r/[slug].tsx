@@ -8,10 +8,10 @@ import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAuth } from '~/lib/auth'
-import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, rewindOneStep } from '~/server/conversations'
+import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, respondentRewind, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
 import { redeemInvite, resolveInviteCode } from '~/server/invites'
-import { initProgress, useRespondentStore } from '~/stores/respondent'
+import { initProgress, useRespondentLocalStore, useRespondentSessionStore } from '~/stores/respondent'
 
 export const route = {
   preload({ params }) {
@@ -24,14 +24,14 @@ export default function Respondent() {
   const params = useParams()
   const slug = createMemo(() => params.slug)
 
-  // Use createResource for form to access loading state
   const [form] = createResource(() => slug(), (s: string) => getPublicFormBySlug({ slug: s }))
 
   const nav = useNavigate()
-  const [store, setStore] = useRespondentStore()
+  const [local, setLocal] = useRespondentLocalStore()
   const start = useAction(getOrCreateConversation)
   const answer = useAction(answerQuestion)
   const rewind = useAction(rewindOneStep)
+  const rewindRespondent = useAction(respondentRewind)
   const reset = useAction(resetConversation)
   const redeem = useAction(redeemInvite)
 
@@ -54,7 +54,7 @@ export default function Respondent() {
   }
   const userId = createMemo(() => auth.session().user?.id ?? getSessionAnonId())
   const formId = createMemo(() => form()?.id)
-  const progress = createMemo(() => store.byForm[formId() ?? '']?.byUser?.[userId()] ?? undefined)
+  const progress = createMemo(() => local.byForm[formId() ?? '']?.byUser?.[userId()] ?? undefined)
   const isOwner = createMemo(() => auth.session().user?.id && form()?.ownerUserId && auth.session().user?.id === form()?.ownerUserId)
 
   const [loading, setLoading] = createSignal(false)
@@ -64,7 +64,9 @@ export default function Respondent() {
   const [redeemAlreadyUsed, setRedeemAlreadyUsed] = createSignal(false)
   const [inviteInput, setInviteInput] = createSignal('')
   const [showInviteInput, setShowInviteInput] = createSignal(false)
-  const [inviteHandled, setInviteHandled] = createSignal(false) // New: to ensure redeemer runs once
+  const [inviteHandled, setInviteHandled] = createSignal(false)
+  const [session, setSession] = useRespondentSessionStore()
+  const [prefillByTurnId, setPrefillByTurnId] = createSignal<Record<string, unknown>>({})
 
   function hasInviteCookie(fid?: string | null): boolean {
     if (!fid || typeof document === 'undefined')
@@ -82,12 +84,32 @@ export default function Respondent() {
   const turnsResult = createAsync(async () => {
     const convId = progress()?.conversationId
     if (!convId)
-      return { items: [] as Array<{ id: string, index: number, status: string, questionJson: any, answerJson?: any }> }
-    return listTurns({ conversationId: convId })
+      return { items: [] as Array<{ id: string, index: number, status: string, questionJson: any, answerJson?: any }>, remainingBack: null as number | null }
+    const res = await listTurns({ conversationId: convId })
+    if (!isOwner() && typeof (res as any)?.remainingBack === 'number') {
+      setSession('byConversation', convId, prev => prev ?? ({}))
+      setSession('byConversation', convId, 'backRemaining', (res as any).remainingBack)
+      const uid = userId()
+      const fid = formId()
+      if (uid && fid)
+        setLocal('byForm', fid, 'byUser', uid, 'backRemaining', (res as any).remainingBack)
+    }
+    return res
   })
   const turns = createMemo(() => turnsResult()?.items ?? [])
   const activeTurn = createMemo(() => turns().find(t => t.status === 'awaiting_answer'))
   const canSubmit = createMemo(() => Boolean(progress()?.conversationId && activeTurn()))
+
+  const conversationId = createMemo(() => progress()?.conversationId)
+  const backRemaining = createMemo<number | null>(() => {
+    if (isOwner())
+      return null
+    const cid = conversationId()
+    if (!cid)
+      return null
+    const v = session.byConversation[cid]?.backRemaining
+    return typeof v === 'number' ? v : null
+  })
 
   const handleStart = async () => {
     const f = form()
@@ -100,8 +122,17 @@ export default function Respondent() {
       const conv = await start({ formId: f.id })
       if (conv?.id) {
         const key = userId()
-        initProgress(setStore, f.id, key)
-        setStore('byForm', f.id, 'byUser', key, 'conversationId', conv.id)
+        initProgress(setLocal, f.id, key)
+        setLocal('byForm', f.id, 'byUser', key, 'conversationId', conv.id)
+        // Initialize remaining back steps optimistically for respondents if configured
+        if (!isOwner()) {
+          const limit = Number((((form() as any)?.settingsJson as any)?.access?.respondentBackLimit ?? 0))
+          const initVal = Number.isFinite(limit) ? Math.max(0, Math.trunc(limit)) : 0
+          const cid = conv.id
+          setSession('byConversation', cid, prev => prev ?? ({}))
+          setSession('byConversation', cid, 'backRemaining', initVal)
+          setLocal('byForm', f.id, 'byUser', key, 'backRemaining', initVal)
+        }
         await revalidate([listTurns.key])
         // Clear any pending used-invite hint once we successfully start
         try {
@@ -146,15 +177,29 @@ export default function Respondent() {
 
   const handleRewind = async () => {
     const convId = progress()?.conversationId
-    if (!convId || !isOwner())
+    if (!convId)
       return
     setLoading(true)
     try {
-      const res = await rewind({ conversationId: convId })
+      const res = isOwner() ? await rewind({ conversationId: convId }) : await rewindRespondent({ conversationId: convId })
+      if (!isOwner()) {
+        const remaining = typeof (res as any)?.remaining === 'number' ? (res as any).remaining : backRemaining()
+        const cid = convId
+        if (cid) {
+          setSession('byConversation', cid, prev => prev ?? ({}))
+          setSession('byConversation', cid, 'backRemaining', remaining ?? 0)
+        }
+        const uid = userId()
+        const fid = formId()
+        if (uid && fid)
+          setLocal('byForm', fid, 'byUser', uid, 'backRemaining', remaining ?? 0)
+      }
       await revalidate([listTurns.key])
       queueMicrotask(() => {
         const targetId = res?.reopenedTurnId ? `#answer-${res.reopenedTurnId}` : '[data-active-turn] textarea, [data-active-turn] input'
         const next = document.querySelector(targetId) as HTMLInputElement | HTMLTextAreaElement | null
+        if (res?.reopenedTurnId)
+          setPrefillByTurnId(prev => ({ ...prev, [res.reopenedTurnId!]: (res as any)?.previousAnswer }))
         next?.focus()
       })
     }
@@ -176,6 +221,10 @@ export default function Respondent() {
     setLoading(true)
     try {
       await answer({ conversationId: convId, turnId: turn.id, value })
+      setPrefillByTurnId((prev) => {
+        const { [turn.id]: _removed, ...rest } = prev
+        return rest
+      })
       await revalidate([listTurns.key])
       queueMicrotask(() => {
         const next = document.querySelector('[data-active-turn] textarea, [data-active-turn] input') as HTMLInputElement | HTMLTextAreaElement | null
@@ -263,8 +312,8 @@ export default function Respondent() {
       // Clear any stale local conversation and ensure structure
       const f = form()
       if (f) {
-        initProgress(setStore, f.id, userId())
-        setStore('byForm', f.id, 'byUser', userId(), 'conversationId', undefined)
+        initProgress(setLocal, f.id, userId())
+        setLocal('byForm', f.id, 'byUser', userId(), 'conversationId', undefined)
       }
       if (el)
         el.value = ''
@@ -492,24 +541,43 @@ export default function Respondent() {
                       </Show>
                       <Show when={t.status === 'awaiting_answer'}>
                         <div class="space-y-4">
-                          <FieldInput field={t.questionJson} id={`answer-${t.id}`} />
-                          <div class="flex items-center gap-2">
-                            <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>
-                              <span class="i-ph:paper-plane-tilt-bold" />
-                              <span>{loading() ? 'Sending…' : 'Submit'}</span>
-                            </Button>
-                            <Show when={isOwner() && (activeTurn()?.index ?? 0) > 0}>
-                              <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
-                                <span class="i-ph:arrow-left-bold" />
-                                <span>Back</span>
+                          <FieldInput
+                            field={t.questionJson}
+                            id={`answer-${t.id}`}
+                            initialAnswer={prefillByTurnId()[t.id]}
+                            conversationId={progress()?.conversationId}
+                          />
+                          <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                              <Button size="sm" variant="default" onClick={() => handleSubmit()} disabled={!canSubmit() || loading()}>
+                                <span class="i-ph:paper-plane-tilt-bold" />
+                                <span>{loading() ? 'Sending…' : 'Submit'}</span>
                               </Button>
-                            </Show>
-                            <Show when={isOwner()}>
-                              <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
-                                <span class="i-ph:arrow-counter-clockwise-bold" />
-                                <span>Reset</span>
-                              </Button>
-                            </Show>
+                              <Show when={isOwner() || (Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0)}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleRewind()}
+                                  disabled={
+                                    loading()
+                                    || (!isOwner() && (backRemaining() === null || backRemaining() === 0))
+                                    || ((activeTurn()?.index ?? 0) === 0)
+                                  }
+                                >
+                                  <span class="i-ph:arrow-left-bold" />
+                                  <span>Back</span>
+                                </Button>
+                              </Show>
+                              <Show when={!isOwner() && backRemaining() !== null}>
+                                <div class="text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
+                              </Show>
+                              <Show when={isOwner()}>
+                                <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
+                                  <span class="i-ph:arrow-counter-clockwise-bold" />
+                                  <span>Reset</span>
+                                </Button>
+                              </Show>
+                            </div>
                             <Show when={loading()}>
                               <span class="i-svg-spinners:180-ring size-4 text-muted-foreground" aria-hidden />
                               <span class="sr-only" aria-live="polite">Working…</span>
@@ -536,16 +604,21 @@ export default function Respondent() {
                       </div>
                     </Show>
                   </div>
-                  <Show when={isOwner()}>
+                  <Show when={isOwner() || Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0}>
                     <div class="flex items-center gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading()}>
+                      <Button size="sm" variant="ghost" onClick={() => handleRewind()} disabled={loading() || (!isOwner() && (backRemaining() === null || backRemaining() === 0))}>
                         <span class="i-ph:arrow-left-bold" />
                         <span>Back</span>
                       </Button>
-                      <Button size="sm" variant="outline" class="ml-1" onClick={() => handleReset()} disabled={loading()}>
-                        <span class="i-ph:arrow-counter-clockwise-bold" />
-                        <span>Reset</span>
-                      </Button>
+                      <Show when={!isOwner() && backRemaining() !== null}>
+                        <div class="text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
+                      </Show>
+                      <Show when={isOwner()}>
+                        <Button size="sm" variant="outline" class="ml-1" onClick={() => handleReset()} disabled={loading()}>
+                          <span class="i-ph:arrow-counter-clockwise-bold" />
+                          <span>Reset</span>
+                        </Button>
+                      </Show>
                       <Show when={loading()}>
                         <span class="i-svg-spinners:180-ring size-4 text-muted-foreground" aria-hidden />
                         <span class="sr-only" aria-live="polite">Working…</span>

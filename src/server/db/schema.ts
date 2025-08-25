@@ -101,6 +101,7 @@ export const Turns = sqliteTable('turns', {
   conversationId: text().notNull().references(() => Conversations.id, { onDelete: 'cascade' }),
   index: integer().notNull(),
   questionJson: text({ mode: 'json' }).$type<FormField>().notNull(),
+  plan: text(),
   answerJson: text({ mode: 'json' }).$type<{ value: unknown, providedAt: string }>(),
   status: text().notNull().default('awaiting_answer'), // 'awaiting_answer' | 'answered'
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),

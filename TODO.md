@@ -2,7 +2,11 @@
 
 - [x] shorten invite link
 - [x] custom component rendering: form/id, r/slug
-- [ ] better prompts, mom test god
+- [x] better prompts, mom test god
+- [x] X retries for respondent setting (def 3), and allowing ending form for user
+- [x] respondent retries left label disappears on page refresh
+- [ ] login on r/slug page shows for some reason even after the form starts
+- [ ] add all llm providers, + builtin with azure
 
 ## later
 

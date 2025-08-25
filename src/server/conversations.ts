@@ -158,13 +158,28 @@ export const listTurns = query(async (raw: { conversationId: string }) => {
   if (!ok)
     throw new Error('Forbidden')
 
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+
   const items = await db
     .select()
     .from(Turns)
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
-  return { items }
+  let remainingBack: number | null = null
+  try {
+    if (form) {
+      const isOwner = Boolean(userId && form.ownerUserId === userId)
+      if (!isOwner) {
+        const limit = getRespondentBackLimit(form)
+        const used = getRespondentBackUsedCount(conv.clientMetaJson)
+        remainingBack = Math.max(0, limit - used)
+      }
+    }
+  }
+  catch {}
+
+  return { items, remainingBack }
 }, 'conv:listTurns')
 
 const answerQuestionSchema = z.object({
@@ -307,6 +322,9 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     if (!prev)
       throw new Error('Previous question not found')
 
+    // Capture previous answer value before clearing
+    const prevAnswerValue = (prev as any)?.answerJson?.value
+
     // Delete current active question (it is the latest turn by design)
     await db
       .delete(Turns)
@@ -325,7 +343,7 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
       .set({ status: 'active', completedAt: null as any })
       .where(eq(Conversations.id, conversationId))
 
-    return { ok: true, reopenedTurnId: updatedPrev?.id }
+    return { ok: true, reopenedTurnId: updatedPrev?.id, previousAnswer: prevAnswerValue }
   }
 
   // Completed (or no active) case: reopen the last answered turn
@@ -333,6 +351,7 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     throw new Error('No questions to rewind')
 
   const last = turns[turns.length - 1]
+  const lastAnswerValue = (last as any)?.answerJson?.value
 
   const [updatedLast] = await db
     .update(Turns)
@@ -345,8 +364,96 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     .set({ status: 'active', completedAt: null as any })
     .where(eq(Conversations.id, conversationId))
 
-  return { ok: true, reopenedTurnId: updatedLast?.id }
+  return { ok: true, reopenedTurnId: updatedLast?.id, previousAnswer: lastAnswerValue }
 }, 'conv:rewind')
+
+// Respondent-limited rewind: allow a non-owner respondent to go back if the form settings permit it.
+export const respondentRewind = action(async (raw: { conversationId: string }) => {
+  'use server'
+  const { conversationId } = safeParseOrThrow(rewindSchema, raw, 'conv:respondentRewind')
+
+  // Load conversation and associated form
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Error('Conversation not found')
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  if (!form)
+    throw new Error('Form not found')
+
+  // Auth: respondent must match either the logged-in user or invite cookie for this form
+  const { userId, inviteJti } = await getIdentityForForm(conv.formId)
+  const isOwner = Boolean(userId && form.ownerUserId === userId)
+  const isRespondent = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
+  if (!isRespondent)
+    throw new Error('Forbidden')
+  // Owners should use the admin rewind endpoint
+  if (isOwner)
+    throw new Error('Use owner rewind')
+
+  // Enforce per-form limit
+  const limit = getRespondentBackLimit(form)
+  if (limit <= 0)
+    throw new Error('Back not allowed')
+
+  // Count how many answered turns are available to step back from
+  const turns = await db
+    .select()
+    .from(Turns)
+    .where(eq(Turns.conversationId, conversationId))
+    .orderBy(asc(Turns.index))
+
+  const active = turns.find(t => t.status === 'awaiting_answer')
+  const answered = turns.filter(t => t.status === 'answered')
+
+  // Determine how many "back" operations have been already used by looking for reopened answers in clientMetaJson
+  const used = getRespondentBackUsedCount(conv.clientMetaJson)
+  if (used >= limit)
+    throw new Error('Back limit reached')
+
+  // If there's an active turn, delete it and reopen previous answered; else reopen the last answered
+  if (active) {
+    if (active.index <= 0)
+      throw new Error('No previous question')
+    const prev = turns.find(t => t.index === active.index - 1)
+    if (!prev)
+      throw new Error('Previous question not found')
+
+    const prevAnswerValue = (prev as any)?.answerJson?.value
+
+    await db.delete(Turns).where(eq(Turns.id, active.id))
+    const [updatedPrev] = await db
+      .update(Turns)
+      .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+      .where(eq(Turns.id, prev.id))
+      .returning()
+
+    // Track usage
+    await db
+      .update(Conversations)
+      .set({ status: 'active', completedAt: null as any, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) as any })
+      .where(eq(Conversations.id, conversationId))
+
+    return { ok: true, reopenedTurnId: updatedPrev?.id, remaining: Math.max(0, limit - (used + 1)), previousAnswer: prevAnswerValue }
+  }
+
+  if (answered.length === 0)
+    throw new Error('No questions to rewind')
+
+  const last = answered[answered.length - 1]
+  const lastAnswerValue = (last as any)?.answerJson?.value
+  const [updatedLast] = await db
+    .update(Turns)
+    .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+    .where(eq(Turns.id, last.id))
+    .returning()
+
+  await db
+    .update(Conversations)
+    .set({ status: 'active', completedAt: null as any, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) as any })
+    .where(eq(Conversations.id, conversationId))
+
+  return { ok: true, reopenedTurnId: updatedLast?.id, remaining: Math.max(0, limit - (used + 1)), previousAnswer: lastAnswerValue }
+}, 'conv:respondentRewind')
 
 const resetSchema = z.object({ conversationId: idSchema })
 
@@ -439,8 +546,44 @@ function getHardLimitInfo(form: any) {
 }
 
 function mergeEndMeta(prev: any, meta: { reason: EndReason, atTurn: number, modelId?: string }) {
-  const base = (prev && typeof prev === 'object') ? prev : {}
+  const base = parseMeta(prev)
   return { ...base, end: { ...(base.end || {}), ...meta } }
+}
+
+function getRespondentBackLimit(form: any): number {
+  const lim = Number((form as any)?.settingsJson?.access?.respondentBackLimit ?? 0)
+  if (Number.isFinite(lim))
+    return Math.max(0, Math.min(10, Math.trunc(lim)))
+  return 0
+}
+
+function getRespondentBackUsedCount(meta: any): number {
+  const obj = parseMeta(meta)
+  const v = (obj as any)?.respondentBack?.used
+  const n = Number(v)
+  if (Number.isFinite(n))
+    return Math.max(0, Math.trunc(n))
+  return 0
+}
+
+function setRespondentBackUsed(prev: any, used: number) {
+  const base = parseMeta(prev)
+  return { ...base, respondentBack: { used } }
+}
+
+function parseMeta(meta: any): any {
+  if (!meta)
+    return {}
+  if (typeof meta === 'string') {
+    try {
+      const obj = JSON.parse(meta)
+      return obj && typeof obj === 'object' ? obj : {}
+    }
+    catch {
+      return {}
+    }
+  }
+  return (meta && typeof meta === 'object') ? meta : {}
 }
 
 // Same as createFollowUpTurnOrEnd but scoped to a transaction
@@ -479,9 +622,37 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
 
-  const system = `You are an expert adaptive interview designer. Given the form's goal and a transcript of previous Q/A, craft the single next best question.
-Prefer conversational, open-ended prompts. Default to long_text unless there's a clear reason to use another type.
-You may also decide to end the form early if you have enough information or the respondent is clearly not engaging.`
+  const system = `You are an expert user researcher conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
+
+Given the form's goal, the conversation history, and your previous plan, you will do two things:
+1. Formulate a new plan: Create a single-sentence internal goal for your next question. This is your hypothesis or the main thing you want to learn next. If the previous plan is still relevant, you can continue it. If the user's answer revealed a more important topic, create a new plan.
+2. Craft the next question: Ask a single, open-ended question that directly serves your new plan.
+
+Guiding Principles:
+- Talk about their life, not our idea.
+- Ask about specifics in the past and present, not opinions about the future.
+- Focus on pain points. When a user mentions a problem, your plan should be to dig deeper.
+
+Rules for Crafting Questions:
+- Avoid Hypotheticals
+- Focus On The Past/Present
+- Listen for emotion. When a user expresses frustration or boredom, your plan should investigate that feeling.
+- Pain Meter: When the user mentions a frustration, workaround, or inefficiency, try to quantify it concisely in the plan: frequency (e.g. times/week), cost (time/money/energy), and consequences/impact. You might have uncovered a pain point, but *how* painful is it? just a mild inconvenience or a major issue?
+
+Defaults and Constraints:
+- Prefer conversational, open-ended prompts.
+- Default field type to long_text unless there is a clear reason to use another type from the allowed set.
+
+Return a question for the user and a plan for the next turn. You may also decide to end the interview early if you have enough information or the user is clearly not engaged.`
+
+  const previousPlan: string | undefined = (() => {
+    const last = [...priorTurns].sort((a: any, b: any) => b.index - a.index)[0]
+    const p = (last as any)?.plan
+    return typeof p === 'string' && p.trim() ? p : undefined
+  })()
+
+  const maxQuestions = stopping.hardLimit.maxQuestions
+  const questionsLeft = Math.max(0, maxQuestions - priorTurns.length)
 
   const user = {
     formGoalPrompt: prompt,
@@ -489,11 +660,16 @@ You may also decide to end the form early if you have enough information or the 
     constraints: {
       allowedTypes: ['short_text', 'long_text', 'multiple_choice', 'boolean', 'rating', 'number', 'multi_select'],
       maxOptions: 6,
-      preferLongTextByDefault: true,
     },
     earlyEnd: {
       allowed: Boolean(stopping.llmMayEnd),
       reasons: stopping.endReasons,
+    },
+    previousPlan,
+    progress: {
+      maxQuestions,
+      questionsLeft,
+      nextQuestionNumber: indexValue + 1,
     },
     history: history.map((h: any) => ({
       index: h.index,
@@ -503,8 +679,12 @@ You may also decide to end the form early if you have enough information or the 
   }
 
   const endSchema = z.object({ end: z.object({ reason: z.enum(['enough_info', 'trolling']) }) })
-  const unionSchema = z.union([formFieldSchema, endSchema])
-  const schema = stopping.llmMayEnd ? unionSchema : formFieldSchema
+  const turnSchema = z.object({
+    question: formFieldSchema,
+    plan: z.string().min(1).describe('A single sentence explaining your internal goal for asking this question.'),
+  })
+  const unionSchema = z.union([turnSchema, endSchema])
+  const schema = stopping.llmMayEnd ? unionSchema : turnSchema
 
   let resp
   try {
@@ -547,14 +727,16 @@ You may also decide to end the form early if you have enough information or the 
   }
 
   const question = {
-    ...obj,
+    ...(obj as any).question,
     id: uuidV7Base58(),
   }
+  const plan = (obj as any).plan as string | undefined
 
   const [created] = await tx.insert(Turns).values({
     conversationId,
     index: indexValue,
     questionJson: question as any,
+    plan: plan as any,
     status: 'awaiting_answer',
   }).returning()
   return { kind: 'turn', turn: created }
