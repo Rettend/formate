@@ -427,6 +427,7 @@ export default function Respondent() {
   const base58 = /^[1-9A-HJ-NP-Za-km-z]{6,24}$/
 
   const allowOAuth = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true))
+  const requiresInviteOnly = createMemo(() => Boolean(form()) && !allowOAuth())
   const inviteRedeemedHint = createMemo(() => {
     try {
       if (typeof window !== 'undefined' && formId())
@@ -471,32 +472,33 @@ export default function Respondent() {
               </div>
             </Show>
 
+            {/* form readiness warning (missing provider key) */}
+            <Show when={form()?.aiReason === 'missing_key'}>
+              <div class="border border-red-400/60 rounded-md bg-red-50 p-3 text-red-800 dark:(border-red-400/40 bg-red-950/30 text-red-200)">
+                <div class="flex flex-col items-start gap-1 text-sm leading-relaxed">
+                  <div class="flex items-center gap-2">
+                    <span class="i-ph:warning-bold" aria-hidden />
+                    <span>
+                      <b>This form isn't fully configured:</b>
+                      {' '}
+                      no LLM API key is set. Please contact the form creator.
+                    </span>
+                  </div>
+                  <Show when={isOwner()}>
+                    <div class="flex items-center gap-2">
+                      <span class="i-ph:wrench-bold" aria-hidden />
+                      <span class="mt-1 block opacity-90">Tip: add a provider API key in the form's settings.</span>
+                    </div>
+                  </Show>
+                </div>
+              </div>
+            </Show>
+
             {/* Header: Title + Summary + Intro (with fallbacks) */}
             <div class="space-y-3">
               <h1 class="text-3xl font-bold tracking-tight md:text-4xl">{form()?.title ?? 'Form'}</h1>
               <Show when={form()?.settingsJson?.summary}>
                 <p class="text-base text-muted-foreground md:text-lg">{form()?.settingsJson?.summary}</p>
-              </Show>
-              {/* form readiness warning (missing provider key) */}
-              <Show when={form()?.aiReason === 'missing_key'}>
-                <div class="border border-red-400/60 rounded-md bg-red-50 p-3 text-red-800 dark:(border-red-400/40 bg-red-950/30 text-red-200)">
-                  <div class="flex flex-col items-start gap-1 text-sm leading-relaxed">
-                    <div class="flex items-center gap-2">
-                      <span class="i-ph:warning-circle-bold" aria-hidden />
-                      <span>
-                        <b>This form isn't fully configured:</b>
-                        {' '}
-                        no LLM API key is set. Please contact the form creator.
-                      </span>
-                    </div>
-                    <Show when={isOwner()}>
-                      <div class="flex items-center gap-2">
-                        <span class="i-ph:wrench-bold" aria-hidden />
-                        <span class="mt-1 block opacity-90">Tip: add a provider API key in the form's settings.</span>
-                      </div>
-                    </Show>
-                  </div>
-                </div>
               </Show>
               <Show when={form()?.settingsJson?.intro}>
                 <div class="mt-2 border rounded-md bg-muted/20 p-3 text-sm leading-relaxed">
@@ -515,18 +517,40 @@ export default function Respondent() {
               <AutoStarter />
             </Show>
 
+            <Show when={form() && !progress()?.conversationId && !autoStartTriggered()}>
+              <div class="mx-auto max-w-sm">
+                <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
+                  <div class="flex items-start gap-3">
+                    <span class="i-ph:info-bold mt-0.5 text-muted-foreground" aria-hidden />
+                    <div class="space-y-1">
+                      <p class="text-sm font-medium">
+                        {requiresInviteOnly()
+                          ? 'This form requires an invite code to start.'
+                          : 'To start, either sign in or enter an invite code.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Show>
+
             {/* Auth gate: hide if invite was just redeemed or auto-starting */}
             <Show when={showSignIn()}>
               <div class="mx-auto max-w-sm">
                 <SignInCard redirectTo={typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : `/r/${slug()}`} />
+                <div class="mt-3 text-center text-xs text-muted-foreground">
+                  Your email is not shared with the form creator.
+                </div>
               </div>
             </Show>
 
             {/* Invite input: show whenever unauthenticated and no active conversation; also when allowOAuth is true (alongside SignInCard). Hide if invite is auto-starting or cookie exists. */}
             <Show when={form() && !auth.session().user && !redeemed() && !progress()?.conversationId && !hasInviteCookie(formId()) && !inviteRedeemedHint() && !autoStartTriggered()}>
-              <div class="mx-auto max-w-sm border rounded-md bg-card p-4 text-card-foreground">
-                <div class="text-sm font-medium">Enter invite code</div>
-                <p class="mb-2 text-xs text-muted-foreground">Paste the code you received. If you opened an invite link directly, this step isn’t needed.</p>
+              <div class="mx-auto max-w-sm border rounded-lg bg-card p-6 text-card-foreground shadow-sm space-y-4">
+                <div class="space-y-1">
+                  <h2 class="text-base font-semibold tracking-tight">Enter invite code</h2>
+                  <p class="text-xs text-muted-foreground">Paste the invite code you received, or open an invite link directly</p>
+                </div>
                 <div class="flex items-center gap-2">
                   <input
                     id="invite-token"
@@ -540,9 +564,11 @@ export default function Respondent() {
                     }}
                     class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
                     placeholder="Enter code"
+                    autocomplete="one-time-code"
                   />
-                  <Button size="sm" disabled={loading() || redeemStarted()} onClick={() => { void handleManualRedeemClick() }}>
-                    Redeem
+                  <Button size="sm" class="px-3" disabled={loading() || redeemStarted()} onClick={() => { void handleManualRedeemClick() }}>
+                    <span class="i-ph:arrow-right-bold" />
+                    <span class="sr-only">Redeem</span>
                   </Button>
                 </div>
               </div>
