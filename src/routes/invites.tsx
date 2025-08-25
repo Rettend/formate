@@ -110,7 +110,7 @@ function Invites() {
                     <div class="truncate text-base font-medium">{f.title}</div>
                     <div class="text-xs text-muted-foreground">ID: {f.id}</div>
                   </div>
-                  <A href={`/r/${f.slug || f.id}`}>
+                  <A href={`/forms/${f.id}`}>
                     <Button size="sm" variant="outline">
                       <span class="i-ph:link-bold" />
                       <span>Open</span>

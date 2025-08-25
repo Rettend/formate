@@ -145,7 +145,7 @@ function FormDetail() {
             </Button>
             <Button size="sm" variant="outline" onClick={handleShare}>
               <span class="i-ph:link-bold" />
-              <span>Share link</span>
+              <span>Copy link</span>
             </Button>
             <Button size="sm" variant="destructive" onClick={handleDelete}>
               <span class="i-ph:trash-bold" />
@@ -343,8 +343,6 @@ function FormDetail() {
                                   e.preventDefault()
                                   const input = e.currentTarget.querySelector('input[name=slug]') as HTMLInputElement | null
                                   const value = (input?.value || '').trim()
-                                  if (!value)
-                                    return
                                   void saveSlug({ formId: id(), slug: value }).then(async () => {
                                     await revalidate([getForm.key])
                                   }).catch((err) => {

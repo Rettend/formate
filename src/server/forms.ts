@@ -88,7 +88,7 @@ const createFormSchema = z.object({
 })
 const saveFormSchema = z.object({
   formId: idSchema,
-  slug: z.string().min(1).max(100).transform(v => v.trim()),
+  slug: z.string().max(100).transform(v => v.trim()),
 })
 
 export const createForm = action(async (raw: { title?: string, slug?: string }) => {
@@ -109,10 +109,12 @@ export const createForm = action(async (raw: { title?: string, slug?: string }) 
         .slice(0, 80)
     : undefined
 
+  const slugToSave = slugSanitized === '' ? null : slugSanitized
+
   const [created] = await db.insert(Forms).values({
     ownerUserId: session.user.id,
     title: input.title?.trim() || 'Untitled Form',
-    slug: slugSanitized,
+    slug: slugToSave,
   }).returning()
 
   return created
@@ -134,9 +136,11 @@ export const saveFormSlug = action(async (raw: { formId: string, slug: string })
     .replace(/-+/g, '-')
     .slice(0, 80)
 
+  const slugToSave = slugSanitized === '' ? null : slugSanitized
+
   const [updated] = await db
     .update(Forms)
-    .set({ slug: slugSanitized, updatedAt: new Date() })
+    .set({ slug: slugToSave, updatedAt: new Date() })
     .where(eq(Forms.id, input.formId))
     .returning()
 

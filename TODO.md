@@ -5,7 +5,7 @@
 - [x] better prompts, mom test god
 - [x] X retries for respondent setting (def 3), and allowing ending form for user
 - [x] respondent retries left label disappears on page refresh
-- [ ] login on r/slug page shows for some reason even after the form starts
+- [x] login on r/slug page shows for some reason even after the form starts
 - [ ] add all llm providers, + builtin with azure
 
 ## later

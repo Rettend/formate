@@ -64,7 +64,6 @@ export default function Respondent() {
   const [redeemStarted, setRedeemStarted] = createSignal(false)
   const [redeemAlreadyUsed, setRedeemAlreadyUsed] = createSignal(false)
   const [inviteInput, setInviteInput] = createSignal('')
-  const [showInviteInput, setShowInviteInput] = createSignal(false)
   const [inviteHandled, setInviteHandled] = createSignal(false)
   const [session, setSession] = useRespondentSessionStore()
   const [prefillByTurnId, setPrefillByTurnId] = createSignal<Record<string, unknown>>({})
@@ -74,7 +73,8 @@ export default function Respondent() {
       return false
     try {
       const name = `form_invite_${fid}=`
-      return document.cookie.split('; ').some(c => c.startsWith(name))
+      const found = document.cookie.split('; ').some(c => c.startsWith(name))
+      return found
     }
     catch {
       return false
@@ -130,10 +130,15 @@ export default function Respondent() {
           setSession('byConversation', cid, 'backRemaining', initVal)
         }
         await revalidate([listTurns.key])
-        // Clear any pending used-invite hint once we successfully start
+        // Clear any pending invite-related hints once we successfully start
         try {
           if (typeof window !== 'undefined')
             window.sessionStorage?.removeItem(`invite_redeem_used_${f.id}`)
+        }
+        catch {}
+        try {
+          if (typeof window !== 'undefined')
+            window.sessionStorage?.removeItem(`invite_redeemed_for_${f.id}`)
         }
         catch {}
       }
@@ -331,16 +336,13 @@ export default function Respondent() {
         const f = form()
         if (f)
           await handleStart()
-        if (!progress()?.conversationId) {
+        if (!progress()?.conversationId)
           toast.error('Invite already used')
-          setShowInviteInput(true)
-        }
         setRedeemStarted(false)
       }
       else {
         toast.error(e instanceof Error ? e.message : 'Invalid or used invite')
         setRedeemStarted(false)
-        setShowInviteInput(true)
       }
     }
     finally {
@@ -356,13 +358,11 @@ export default function Respondent() {
     }
   }
 
-  // FieldInput extracted to components/fields/FieldInput
-
   // Sub-component for auto-starting (mounts only when conditions met)
   const AutoStarter = () => {
     onMount(() => {
-      setAutoStartTriggered(true) // Set synchronously to prevent re-mount
-      void handleStart() // Run async
+      setAutoStartTriggered(true)
+      void handleStart()
     })
     return null
   }
@@ -375,7 +375,8 @@ export default function Respondent() {
       setRedeemStarted(true)
       setLoading(true)
       try {
-        await redeem({ code: slug() })
+        const code = slug()
+        await redeem({ code })
       }
       catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -383,7 +384,8 @@ export default function Respondent() {
           setRedeemAlreadyUsed(true) // Defer user messaging to canonical route
       }
       try {
-        const res = await resolveInviteCode({ code: slug() })
+        const code = slug()
+        const res = await resolveInviteCode({ code })
         if (res?.formId) {
           // If we saw a used-invite error, leave a per-tab hint for the canonical route
           if (redeemAlreadyUsed()) {
@@ -393,13 +395,17 @@ export default function Respondent() {
             }
             catch {}
           }
+          try {
+            if (typeof window !== 'undefined')
+              window.sessionStorage?.setItem(`invite_redeemed_for_${res.formId}`, '1')
+          }
+          catch {}
           nav(`/r/${res.formId}`, { replace: true })
         }
       }
       catch (e) {
         console.error('Resolve failed:', e)
         toast.error('Failed to resolve invite code. Please try manually.')
-        setShowInviteInput(true)
       }
       finally {
         setRedeemStarted(false)
@@ -419,6 +425,21 @@ export default function Respondent() {
   }
 
   const base58 = /^[1-9A-HJ-NP-Za-km-z]{6,24}$/
+
+  const allowOAuth = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true))
+  const inviteRedeemedHint = createMemo(() => {
+    try {
+      if (typeof window !== 'undefined' && formId())
+        return window.sessionStorage?.getItem(`invite_redeemed_for_${formId()}`) === '1'
+    }
+    catch {}
+    return false
+  })
+  const showSignIn = createMemo(() => Boolean(form())
+    && !auth.session().user
+    && allowOAuth()
+    && !progress()?.conversationId
+    && !inviteRedeemedHint())
 
   return (
     <AppShell showSidebar={Boolean(isOwner())}>
@@ -468,20 +489,20 @@ export default function Respondent() {
               <CanonicalRedirector />
             </Show>
 
-            {/* Auto-starter: run only when we have an identity (user or invite cookie) to avoid Unauthorized */}
-            <Show when={form() && !progress()?.conversationId && !autoStartTriggered()}>
+            {/* Auto-starter: attempt once when we have some identity (user, invite cookie, or hint from invite redirect) */}
+            <Show when={form() && !progress()?.conversationId && !autoStartTriggered() && (Boolean(auth.session().user) || hasInviteCookie(formId()) || inviteRedeemedHint())}>
               <AutoStarter />
             </Show>
 
-            {/* Auth gate: show sign-in only if form allows OAuth; skip if no form */}
-            <Show when={form() && !auth.session().user && Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true)}>
+            {/* Auth gate: hide if invite was just redeemed or auto-starting */}
+            <Show when={showSignIn()}>
               <div class="mx-auto max-w-sm">
                 <SignInCard redirectTo={typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : `/r/${slug()}`} />
               </div>
             </Show>
 
-            {/* Invite input: show when OAuth disabled OR explicitly requested due to an invite error; hide if invite cookie exists; skip if no form */}
-            <Show when={form() && !auth.session().user && (!(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true) || showInviteInput()) && !redeemed() && !progress()?.conversationId && !hasInviteCookie(formId())}>
+            {/* Invite input: show whenever unauthenticated and no active conversation; also when allowOAuth is true (alongside SignInCard). Hide if invite is auto-starting or cookie exists. */}
+            <Show when={form() && !auth.session().user && !redeemed() && !progress()?.conversationId && !hasInviteCookie(formId()) && !inviteRedeemedHint() && !autoStartTriggered()}>
               <div class="mx-auto max-w-sm border rounded-md bg-card p-4 text-card-foreground">
                 <div class="text-sm font-medium">Enter invite code</div>
                 <p class="mb-2 text-xs text-muted-foreground">Paste the code you received. If you opened an invite link directly, this step isn’t needed.</p>
@@ -593,7 +614,7 @@ export default function Respondent() {
                 </For>
                 <Show when={turns().length === 0}>
                   <div class="text-sm text-muted-foreground">
-                    {auth.session().user ? 'Preparing first question…' : 'Sign in to start.'}
+                    {auth.session().user || autoStartTriggered() ? 'Preparing first question…' : 'Sign in to start.'}
                   </div>
                 </Show>
               </div>
