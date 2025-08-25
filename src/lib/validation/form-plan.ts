@@ -68,6 +68,7 @@ export const formPlanSchema = z.object({
     }).default({ maxQuestions: 10 }),
     llmMayEnd: z.boolean().default(true),
     endReasons: z.array(z.enum(['enough_info', 'trolling'])).min(0).max(2).default(['enough_info', 'trolling']),
+    allowRespondentComplete: z.boolean().default(false),
   }).optional(),
 })
 

@@ -9,7 +9,7 @@ import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAuth } from '~/lib/auth'
-import { answerQuestion, getOrCreateConversation, listTurns, resetConversation, respondentRewind, rewindOneStep } from '~/server/conversations'
+import { answerQuestion, completeConversation, getOrCreateConversation, listTurns, resetConversation, respondentRewind, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
 import { redeemInvite, resolveInviteCode } from '~/server/invites'
 import { initProgress, useRespondentLocalStore, useRespondentSessionStore } from '~/stores/respondent'
@@ -34,6 +34,7 @@ export default function Respondent() {
   const rewind = useAction(rewindOneStep)
   const rewindRespondent = useAction(respondentRewind)
   const reset = useAction(resetConversation)
+  const complete = useAction(completeConversation)
   const redeem = useAction(redeemInvite)
 
   // Per-tab anonymous identity (sessionStorage)
@@ -94,8 +95,10 @@ export default function Respondent() {
     return res
   })
   const turns = createMemo(() => turnsResult()?.items ?? [])
+  const conversationStatus = createMemo(() => (turnsResult() as any)?.status as string | undefined)
+  const isCompleted = createMemo(() => conversationStatus() === 'completed')
   const activeTurn = createMemo(() => turns().find(t => t.status === 'awaiting_answer'))
-  const canSubmit = createMemo(() => Boolean(progress()?.conversationId && activeTurn()))
+  const canSubmit = createMemo(() => Boolean(progress()?.conversationId && activeTurn() && !isCompleted()))
 
   const conversationId = createMemo(() => progress()?.conversationId)
   const backRemaining = createMemo<number | null>(() => {
@@ -257,6 +260,23 @@ export default function Respondent() {
         catch {}
       }
       toast.error(e instanceof Error ? e.message : 'Failed to submit')
+    }
+    finally {
+      setLoading(false)
+    }
+  }
+
+  const handleComplete = async () => {
+    const convId = progress()?.conversationId
+    if (!convId)
+      return
+    setLoading(true)
+    try {
+      await complete({ conversationId: convId })
+      await revalidate([listTurns.key])
+    }
+    catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to complete')
     }
     finally {
       setLoading(false)
@@ -427,6 +447,7 @@ export default function Respondent() {
   const base58 = /^[1-9A-HJ-NP-Za-km-z]{6,24}$/
 
   const allowOAuth = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true))
+  const allowRespondentComplete = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.stopping?.allowRespondentComplete ?? false))
   const requiresInviteOnly = createMemo(() => Boolean(form()) && !allowOAuth())
   const inviteRedeemedHint = createMemo(() => {
     try {
@@ -610,7 +631,7 @@ export default function Respondent() {
                           })()}
                         </div>
                       </Show>
-                      <Show when={t.status === 'awaiting_answer'}>
+                      <Show when={t.status === 'awaiting_answer' && !isCompleted()}>
                         <div class="space-y-4">
                           <FieldInput
                             field={t.questionJson}
@@ -640,12 +661,18 @@ export default function Respondent() {
                                 </Button>
                               </Show>
                               <Show when={!isOwner() && Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0 && backRemaining() !== null}>
-                                <div class="text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
+                                <div class="mr-2 text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
                               </Show>
                               <Show when={isOwner()}>
                                 <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
                                   <span class="i-ph:arrow-counter-clockwise-bold" />
                                   <span>Reset</span>
+                                </Button>
+                              </Show>
+                              <Show when={!isOwner() && allowRespondentComplete() && !isCompleted()}>
+                                <Button size="sm" variant="outline" onClick={() => handleComplete()} disabled={loading()}>
+                                  <span class="i-ph:check-circle-bold" />
+                                  <span>Complete</span>
                                 </Button>
                               </Show>
                             </div>
@@ -665,7 +692,7 @@ export default function Respondent() {
                   </div>
                 </Show>
               </div>
-              <Show when={!activeTurn() && turns().length > 0}>
+              <Show when={(isCompleted() || !activeTurn()) && turns().length > 0}>
                 <div class="space-y-3">
                   <div class="text-base text-muted-foreground md:text-lg">All done!</div>
                   <div class="mt-2 border rounded-md bg-muted/20 p-3 text-sm leading-relaxed">

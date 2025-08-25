@@ -516,6 +516,7 @@ const stoppingSchema = z.object({
   hardLimit: z.object({ maxQuestions: z.coerce.number().int().min(1).max(50) }),
   llmMayEnd: z.boolean(),
   endReasons: z.array(z.enum(['enough_info', 'trolling'])).min(0).max(2),
+  allowRespondentComplete: z.boolean().optional(),
 })
 
 export const saveFormStopping = action(async (raw: { formId: string, stopping: z.infer<typeof stoppingSchema> }) => {
@@ -532,7 +533,9 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
     throw new Error('Not found')
 
   const existing = (form as any).settingsJson ?? {}
-  const next = { ...existing, stopping: input.stopping }
+  const prevStopping = (existing as any).stopping || {}
+  const nextStopping = { ...prevStopping, ...input.stopping }
+  const next = { ...existing, stopping: nextStopping }
 
   const [updated] = await db
     .update(Forms)

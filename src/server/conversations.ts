@@ -178,7 +178,7 @@ export const listTurns = query(async (raw: { conversationId: string }) => {
   }
   catch {}
 
-  return { items, remainingBack }
+  return { items, remainingBack, status: conv.status }
 }, 'conv:listTurns')
 
 const answerQuestionSchema = z.object({

@@ -41,7 +41,7 @@ function FormDetail() {
   const saveSlug = useAction(saveFormSlug)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
-  const [stopping, setStopping] = createSignal<{ hardLimit: { maxQuestions: number }, llmMayEnd: boolean, endReasons: Array<'enough_info' | 'trolling'> }>()
+  const [stopping, setStopping] = createSignal<{ hardLimit?: { maxQuestions: number }, llmMayEnd?: boolean, endReasons?: Array<'enough_info' | 'trolling'>, allowRespondentComplete?: boolean }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
   const tab = createMemo<'access' | 'stopping'>(() => ui.formsUi?.[id()]?.settingsTab ?? 'access')
   const hasStoredKey = createMemo(() => Boolean(form()?.hasProviderKey))
@@ -52,11 +52,22 @@ function FormDetail() {
       hardLimit: { maxQuestions: Math.min(50, Math.max(1, Number(s?.hardLimit?.maxQuestions ?? 10))) },
       llmMayEnd: Boolean(s?.llmMayEnd ?? true),
       endReasons: Array.isArray(s?.endReasons) && s.endReasons.length > 0 ? s.endReasons : ['enough_info', 'trolling'],
+      allowRespondentComplete: Boolean((s as any)?.allowRespondentComplete ?? false),
     }
   }
 
   const defaultStopping = createMemo(() => getDefaultStoppingFromForm())
-  const effectiveStopping = createMemo(() => stopping() ?? defaultStopping())
+  const effectiveStopping = createMemo(() => {
+    const base = defaultStopping()
+    const curr = stopping()
+    if (!curr)
+      return base
+    return {
+      ...base,
+      ...curr,
+      hardLimit: { ...base.hardLimit, ...(curr.hardLimit || {}) },
+    }
+  })
 
   const NullRedirector: VoidComponent = () => {
     onMount(() => {
@@ -66,10 +77,10 @@ function FormDetail() {
   }
 
   const handleSaveStopping = async () => {
-    const s = stopping()
+    const s = effectiveStopping()
     if (!s)
       return
-    await saveStopping({ formId: id(), stopping: s })
+    await saveStopping({ formId: id(), stopping: s as any })
     await revalidate([getForm.key])
   }
 
@@ -200,7 +211,6 @@ function FormDetail() {
                                 id="allow-oauth-respondents"
                                 checked={Boolean(f?.settingsJson?.access?.allowOAuth ?? true)}
                                 onChange={(v) => {
-                                  // Persist into settingsJson.access.allowOAuth
                                   void saveAccess({ formId: id(), access: { allowOAuth: Boolean(v) } })
                                     .then(() => revalidate([getForm.key]))
                                 }}
@@ -329,7 +339,7 @@ function FormDetail() {
                             <p class="mb-4 text-sm text-muted-foreground">Control when the interview ends.</p>
                             <div class="grid gap-4 sm:grid-cols-2">
                               <div
-                                class="flex flex-col gap-2"
+                                class="flex flex-col gap-10"
                                 onFocusOut={(e) => {
                                   const next = e.relatedTarget as Node | null
                                   const curr = e.currentTarget as HTMLDivElement
@@ -338,29 +348,46 @@ function FormDetail() {
                                   void handleSaveStopping()
                                 }}
                               >
-                                <label class="text-sm">Max questions (hard limit)</label>
-                                <p class="text-xs text-muted-foreground">Includes the seed question.</p>
-                                <NumberField
-                                  class="w-full"
-                                  value={effectiveStopping().hardLimit.maxQuestions}
-                                  onChange={(val) => {
-                                    const base = (val === '' || val == null)
-                                      ? 10
-                                      : (typeof val === 'number' ? val : Number(val))
-                                    const clamped = Math.min(50, Math.max(1, base))
-                                    setStopping(s => ({ ...(s as any), hardLimit: { maxQuestions: clamped } }))
-                                    saveStoppingDebounced()
-                                  }}
-                                  minValue={1}
-                                  maxValue={50}
-                                  step={1}
-                                >
-                                  <NumberFieldGroup>
-                                    <NumberFieldInput aria-label="Max questions (includes seed)" />
-                                    <NumberFieldDecrementTrigger />
-                                    <NumberFieldIncrementTrigger />
-                                  </NumberFieldGroup>
-                                </NumberField>
+                                <div class="flex flex-col gap-2">
+                                  <label class="text-sm">Max questions (hard limit)</label>
+                                  <p class="text-xs text-muted-foreground">Includes the seed question.</p>
+                                  <NumberField
+                                    class="w-full"
+                                    value={effectiveStopping().hardLimit.maxQuestions}
+                                    onChange={(val) => {
+                                      const base = (val === '' || val == null)
+                                        ? 10
+                                        : (typeof val === 'number' ? val : Number(val))
+                                      const clamped = Math.min(50, Math.max(1, base))
+                                      setStopping(s => ({ ...(s as any), hardLimit: { maxQuestions: clamped } }))
+                                      saveStoppingDebounced()
+                                    }}
+                                    minValue={1}
+                                    maxValue={50}
+                                    step={1}
+                                  >
+                                    <NumberFieldGroup>
+                                      <NumberFieldInput aria-label="Max questions (includes seed)" />
+                                      <NumberFieldDecrementTrigger />
+                                      <NumberFieldIncrementTrigger />
+                                    </NumberFieldGroup>
+                                  </NumberField>
+                                </div>
+
+                                <div class="flex items-start space-x-2">
+                                  <Checkbox
+                                    id="respondent-complete"
+                                    checked={Boolean((effectiveStopping() as any).allowRespondentComplete ?? false)}
+                                    onChange={(v) => {
+                                      setStopping(s => ({ ...(s as any), allowRespondentComplete: Boolean(v) }))
+                                      void handleSaveStopping()
+                                    }}
+                                  />
+                                  <div class="grid gap-1.5 leading-none">
+                                    <Label for="respondent-complete">Show "Complete" button to respondents</Label>
+                                    <p class="text-xs text-muted-foreground">Let respondents finish anytime. Owner always has full controls.</p>
+                                  </div>
+                                </div>
                               </div>
                               <div class="flex flex-col gap-2">
                                 <div class="flex items-start space-x-2">
@@ -428,6 +455,7 @@ function FormDetail() {
                                   </div>
                                 </div>
                               </div>
+
                             </div>
                           </div>
                         </TabsContent>
