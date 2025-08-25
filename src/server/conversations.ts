@@ -11,6 +11,7 @@ import { aiErrorToMessage, extractAICause, logAIError } from '~/lib/ai/errors'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
 import { formFieldSchema } from '~/lib/validation/form-plan'
 import { ensure } from '~/utils'
+import { assertProviderAllowedForUser } from './ai'
 import { decryptSecret } from './crypto'
 import { db } from './db'
 import { Conversations, Forms, Turns } from './db/schema'
@@ -587,7 +588,6 @@ function parseMeta(meta: any): any {
   return (meta && typeof meta === 'object') ? meta : {}
 }
 
-// Same as createFollowUpTurnOrEnd but scoped to a transaction
 async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexValue: number): Promise<
   | { kind: 'turn', turn: any }
   | { kind: 'end', reason: Exclude<EndReason, 'hard_limit'>, modelId?: string }
@@ -622,6 +622,8 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
 
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
+
+  await assertProviderAllowedForUser(provider, form.ownerUserId)
 
   const system = `You are an expert user researcher conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
 
@@ -684,12 +686,21 @@ Return a question for the user and a plan for the next turn. You may also decide
     question: formFieldSchema,
     plan: z.string().min(1).describe('A single sentence explaining your internal goal for asking this question.'),
   })
-  const unionSchema = z.union([turnSchema, endSchema])
-  const schema = stopping.llmMayEnd ? unionSchema : turnSchema
+
+  const isFormateProvider = provider === 'formate'
+  let schema
+  if (stopping.llmMayEnd) {
+    if (isFormateProvider)
+      schema = z.object({ output: z.union([turnSchema, endSchema]) })
+    else
+      schema = z.union([turnSchema, endSchema])
+  }
+  else {
+    schema = turnSchema
+  }
 
   let resp
   try {
-    // Decrypt per-form provider key if available
     let apiKey: string | undefined
     try {
       const enc: string | undefined = (form as any).aiProviderKeyEnc
@@ -697,7 +708,6 @@ Return a question for the user and a plan for the next turn. You may also decide
         apiKey = await decryptSecret(enc)
     }
     catch (e) {
-      // If decryption fails, continue without apiKey so provider default applies
       console.error('[conv] Failed to decrypt provider key:', e)
     }
 
@@ -720,7 +730,7 @@ Return a question for the user and a plan for the next turn. You may also decide
     throw new Error(JSON.stringify(payload))
   }
 
-  const obj: any = resp.object
+  const obj = isFormateProvider ? resp.object.output : resp.object
 
   if (stopping.llmMayEnd && obj && typeof obj === 'object' && (obj.end?.reason === 'enough_info' || obj.end?.reason === 'trolling')) {
     if (Array.isArray(stopping.endReasons) && stopping.endReasons.includes(obj.end.reason))

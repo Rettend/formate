@@ -7,6 +7,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createGroq } from '@ai-sdk/groq'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject, streamObject, streamText } from 'ai'
+import { serverEnv } from '~/env/server'
 
 export { streamText }
 export type { ModelMessage }
@@ -14,7 +15,10 @@ export type { ModelMessage }
 export function getProvider(provider: Provider, id: string, apiKey?: string) {
   switch (provider) {
     case 'formate': {
-      return createAzure({ apiKey })(id)
+      return createAzure({
+        apiKey: serverEnv.AZURE_API_KEY,
+        resourceName: serverEnv.AZURE_RESOURCE_NAME,
+      })(id)
     }
     case 'openai': {
       return createOpenAI({ apiKey })(id)
@@ -46,7 +50,7 @@ export async function streamChatText(options: {
   apiKey?: string
   abortSignal?: AbortSignal
 }) {
-  const model = getProvider(options.provider, options.modelId, options.apiKey)
+  const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
   return streamText({ model, messages: options.messages, abortSignal: options.abortSignal })
 }
 
@@ -58,12 +62,13 @@ export async function generateStructured(options: {
   apiKey?: string
   providerOptions?: any
 }) {
-  const model = getProvider(options.provider, options.modelId, options.apiKey)
+  const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
   return generateObject({
     model,
     schema: options.schema,
     messages: options.messages,
     providerOptions: options.providerOptions,
+    mode: 'tool',
   })
 }
 
@@ -75,6 +80,6 @@ export function streamStructured(options: {
   apiKey?: string
   providerOptions?: any
 }) {
-  const model = getProvider(options.provider, options.modelId, options.apiKey)
+  const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
   return streamObject({ model, schema: options.schema, messages: options.messages, providerOptions: options.providerOptions })
 }

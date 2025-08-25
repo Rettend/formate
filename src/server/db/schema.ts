@@ -8,6 +8,7 @@ export const Users = sqliteTable('users', {
   email: text().unique(),
   emailVerified: integer({ mode: 'boolean' }),
   image: text(),
+  isPremium: integer({ mode: 'boolean' }).default(false),
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
 })

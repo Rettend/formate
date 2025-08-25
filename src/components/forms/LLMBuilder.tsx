@@ -259,8 +259,15 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
                 optionTextValue={p => p}
                 value={llmProvider()}
                 onChange={(val) => {
-                  setLlmProvider(val ?? null)
-                  setModel(null)
+                  const provider = val ?? null
+                  setLlmProvider(provider)
+                  if (provider) {
+                    const first = (models[provider] ?? [])[0]?.value ?? null
+                    setModel(first)
+                  }
+                  else {
+                    setModel(null)
+                  }
                 }}
                 placeholder="Select provider"
                 disallowEmptySelection={false}

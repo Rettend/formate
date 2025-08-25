@@ -48,11 +48,11 @@ export const models: Record<Provider, ModelConfigObject[]> = {
   formate: [
     { value: 'model-router', alias: 'Auto', providerType: 'azure-openai', iq: 3, speed: 3 },
     // OpenAI GPT-5 mini (medium): AAII 64
-    { value: 'gpt-5-mini', alias: 'GPT-5 mini', providerType: 'azure-openai', iq: 4, speed: 2 },
+    { value: 'gpt-5-mini', alias: 'GPT-5 mini', providerType: 'azure-openai', iq: 4, speed: 3 },
     // OpenAI GPT-5 nano (medium): AAII 54
-    { value: 'gpt-5-nano', alias: 'GPT-5 nano', providerType: 'azure-openai', iq: 3, speed: 4 },
+    { value: 'gpt-5-nano', alias: 'GPT-5 nano', providerType: 'azure-openai', iq: 3, speed: 3 },
     // OpenAI GPT-4.1: AAII 47
-    { value: 'gpt-4.1', alias: 'GPT-4.1', providerType: 'azure-openai', iq: 3, speed: 2 },
+    { value: 'gpt-4.1', alias: 'GPT-4.1', providerType: 'azure-openai', iq: 3, speed: 3 },
   ],
   openai: [
     // GPT-5 (medium): AAII 68, 180 tps

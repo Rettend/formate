@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { idSchema, paginationSchema, safeParseOrThrow } from '~/lib/validation'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
+import { assertProviderAllowedForUser } from './ai'
 import { encryptSecret } from './crypto'
 import { db } from './db'
 import { Forms, FormTestRuns } from './db/schema'
@@ -265,10 +266,15 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
 
   const aiCfg: any = (form as any).aiConfigJson
   const hasAIConfig = Boolean(aiCfg?.provider && aiCfg?.modelId && typeof aiCfg?.prompt === 'string' && aiCfg?.prompt.trim().length > 0)
+  const providerId: string | undefined = aiCfg?.provider
+  const needsPerFormKey = providerId && providerId !== 'formate'
   const hasProviderKey = Boolean((form as any).aiProviderKeyEnc)
+  const keyOk = needsPerFormKey ? hasProviderKey : true
 
-  const aiReady = hasAIConfig && hasProviderKey
-  const aiReason: 'ok' | 'missing_config' | 'missing_key' = aiReady ? 'ok' : (!hasAIConfig ? 'missing_config' : 'missing_key')
+  const aiReady = hasAIConfig && keyOk
+  const aiReason: 'ok' | 'missing_config' | 'missing_key' = aiReady
+    ? 'ok'
+    : (!hasAIConfig ? 'missing_config' : 'missing_key')
 
   const { aiProviderKeyEnc: _omit, ...rest } = form as any
   return { ...rest, aiReady, aiReason, hasAIConfig }
@@ -305,6 +311,8 @@ export const saveFormPrompt = action(async (raw: { formId: string, prompt: strin
     throw new Error('Unauthorized')
   const input = safeParseOrThrow(savePromptSchema, raw, 'forms:savePrompt')
 
+  await assertProviderAllowedForUser(input.provider, session.user.id)
+
   const [updated] = await db
     .update(Forms)
     .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId }, updatedAt: new Date() })
@@ -330,6 +338,10 @@ export const saveFormProviderKey = action(async (raw: { formId: string, apiKey: 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
     throw new Error('Not found')
+
+  const provider: string | undefined = (form as any)?.aiConfigJson?.provider
+  if (provider === 'formate')
+    throw new Error('Formate provider uses a server-managed key. No per-form key is needed.')
 
   const enc = await encryptSecret(input.apiKey)
   const [updated] = await db
@@ -382,6 +394,8 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   if (!form)
     throw new Error('Not found')
 
+  await assertProviderAllowedForUser(input.provider, session.user.id)
+
   const { planFormWithLLM } = await import('~/lib/ai/form-planner')
   let plan: unknown
   try {
@@ -422,6 +436,8 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
     throw new Error('Not found')
   if (!form.settingsJson)
     throw new Error('No plan applied yet')
+
+  await assertProviderAllowedForUser(input.provider, session.user.id)
 
   const plan = formPlanSchema.parse(form.settingsJson)
   const { simulateTestRun } = await import('~/lib/ai/form-planner')
@@ -469,6 +485,8 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
     throw new Error('Not found')
   if (!form.settingsJson)
     throw new Error('No plan applied yet')
+
+  await assertProviderAllowedForUser(input.provider, session.user.id)
 
   const plan = formPlanSchema.parse(form.settingsJson)
   if (input.index !== 0)
