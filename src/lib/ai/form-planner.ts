@@ -3,7 +3,7 @@ import type { ModelMessage } from '~/lib/ai'
 import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import { z } from 'zod'
 import { generateStructured } from '~/lib/ai'
-import { formFieldSchema, formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
+import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 
 const SYSTEM_INSTRUCTIONS = `You are an expert interview/form designer.
 Write a a form intro, outro, and form summary for the respondents.
@@ -20,11 +20,11 @@ function buildPlanningMessages(prompt: string): ModelMessage[] {
   ]
 }
 
-const formPlanCoreSchema = z.object({
-  summary: formPlanSchema.shape.summary,
-  intro: formPlanSchema.shape.intro,
-  outro: formPlanSchema.shape.outro,
-  seed: formFieldSchema,
+const formPlanCoreSchema = formPlanSchema.pick({
+  summary: true,
+  intro: true,
+  outro: true,
+  seed: true,
 })
 
 export async function planFormWithLLM(options: {
