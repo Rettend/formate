@@ -6,13 +6,10 @@ import { getRequestEvent } from 'solid-js/web'
 import { getCookie, setCookie } from 'vinxi/http'
 import { z } from 'zod'
 import { uuidV7Base58 } from '~/lib'
-import { generateStructured } from '~/lib/ai'
-import { aiErrorToMessage, extractAICause, logAIError } from '~/lib/ai/errors'
+import { generateInterviewFollowUp } from '~/lib/ai/follow-up'
 import { idSchema, safeParseOrThrow } from '~/lib/validation'
-import { formFieldSchema } from '~/lib/validation/form-plan'
 import { ensure } from '~/utils'
 import { assertProviderAllowedForUser } from './ai'
-import { decryptSecret } from './crypto'
 import { db } from './db'
 import { Conversations, Forms, Turns } from './db/schema'
 
@@ -625,125 +622,38 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
 
   await assertProviderAllowedForUser(provider, form.ownerUserId)
 
-  const system = `You are an expert user researcher conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
-
-Given the form's goal, the conversation history, and your previous plan, you will do two things:
-1. Formulate a new plan: Create a single-sentence internal goal for your next question. This is your hypothesis or the main thing you want to learn next. If the previous plan is still relevant, you can continue it. If the user's answer revealed a more important topic, create a new plan.
-2. Craft the next question: Ask a single, open-ended question that directly serves your new plan.
-
-Guiding Principles:
-- Talk about their life, not our idea.
-- Ask about specifics in the past and present, not opinions about the future.
-- Focus on pain points. When a user mentions a problem, your plan should be to dig deeper.
-
-Rules for Crafting Questions:
-- Avoid Hypotheticals
-- Focus On The Past/Present
-- Listen for emotion. When a user expresses frustration or boredom, your plan should investigate that feeling.
-- Pain Meter: When the user mentions a frustration, workaround, or inefficiency, try to quantify it concisely in the plan: frequency (e.g. times/week), cost (time/money/energy), and consequences/impact. You might have uncovered a pain point, but *how* painful is it? just a mild inconvenience or a major issue?
-
-Defaults and Constraints:
-- Prefer conversational, open-ended prompts.
-- Default field type to long_text unless there is a clear reason to use another type from the allowed set.
-
-Return a question for the user and a plan for the next turn. You may also decide to end the interview early if you have enough information or the user is clearly not engaged.`
-
   const previousPlan: string | undefined = (() => {
     const last = [...priorTurns].sort((a: any, b: any) => b.index - a.index)[0]
     const p = (last as any)?.plan
     return typeof p === 'string' && p.trim() ? p : undefined
   })()
-
-  const maxQuestions = stopping.hardLimit.maxQuestions
-  const questionsLeft = Math.max(0, maxQuestions - priorTurns.length)
-
-  const user = {
+  const result = await generateInterviewFollowUp({
+    provider,
+    modelId,
+    apiKeyEnc: (form as any).aiProviderKeyEnc,
     formGoalPrompt: prompt,
     planSummary: (form as any).settingsJson?.summary ?? undefined,
-    constraints: {
-      allowedTypes: ['short_text', 'long_text', 'multiple_choice', 'boolean', 'rating', 'number', 'multi_select'],
-      maxOptions: 6,
-    },
-    earlyEnd: {
-      allowed: Boolean(stopping.llmMayEnd),
-      reasons: stopping.endReasons,
-    },
-    previousPlan,
-    progress: {
-      maxQuestions,
-      questionsLeft,
-      nextQuestionNumber: indexValue + 1,
-    },
+    stopping,
+    indexValue,
+    priorCount: priorTurns.length,
     history: history.map((h: any) => ({
       index: h.index,
       question: h.question ? { label: (h.question as any).label, type: (h.question as any).type } : undefined,
       answer: h.answer,
     })),
-  }
-
-  const endSchema = z.object({ end: z.object({ reason: z.enum(['enough_info', 'trolling']) }) })
-  const turnSchema = z.object({
-    question: formFieldSchema,
-    plan: z.string().min(1).describe('A single sentence explaining your internal goal for asking this question.'),
+    previousPlan,
   })
 
-  const isFormateProvider = provider === 'formate'
-  let schema
-  if (stopping.llmMayEnd) {
-    if (isFormateProvider)
-      schema = z.object({ output: z.union([turnSchema, endSchema]) })
-    else
-      schema = z.union([turnSchema, endSchema])
-  }
-  else {
-    schema = turnSchema
-  }
+  if (result.kind === 'end')
+    return { kind: 'end', reason: result.reason, modelId: result.modelId }
 
-  let resp
-  try {
-    let apiKey: string | undefined
-    try {
-      const enc: string | undefined = (form as any).aiProviderKeyEnc
-      if (enc && typeof enc === 'string' && enc.length > 0)
-        apiKey = await decryptSecret(enc)
-    }
-    catch (e) {
-      console.error('[conv] Failed to decrypt provider key:', e)
-    }
-
-    resp = await generateStructured({
-      schema,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: JSON.stringify(user) },
-      ],
-      provider,
-      modelId,
-      apiKey,
-    })
-  }
-  catch (err) {
-    logAIError(err, 'conv:generateFollowUp')
-    const cause = extractAICause(err)
-    const code = (typeof cause === 'string' && cause.toLowerCase().includes('validation')) ? 'VALIDATION_FAILED' : 'AI_ERROR'
-    const payload = { code, message: aiErrorToMessage(err), cause }
-    throw new Error(JSON.stringify(payload))
-  }
-
-  const obj = isFormateProvider ? resp.object.output : resp.object
-
-  if (stopping.llmMayEnd && obj && typeof obj === 'object' && (obj.end?.reason === 'enough_info' || obj.end?.reason === 'trolling')) {
-    if (Array.isArray(stopping.endReasons) && stopping.endReasons.includes(obj.end.reason))
-      return { kind: 'end', reason: obj.end.reason, modelId }
-  }
-
-  const incoming = obj.question
+  const incoming = result.question
   const incomingId = (incoming && typeof incoming.id === 'string' && incoming.id.trim().length > 0) ? String(incoming.id).trim() : undefined
   const question = {
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  const plan = (obj as any).plan as string | undefined
+  const plan = result.plan
 
   const [created] = await tx.insert(Turns).values({
     conversationId,
