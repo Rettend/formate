@@ -236,7 +236,16 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
 
   // First try by slug (preferred) — fetch without status filter, gate in app
   let rows = await db
-    .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId, slug: Forms.slug })
+    .select({
+      id: Forms.id,
+      title: Forms.title,
+      status: Forms.status,
+      settingsJson: Forms.settingsJson,
+      ownerUserId: Forms.ownerUserId,
+      slug: Forms.slug,
+      aiConfigJson: Forms.aiConfigJson,
+      aiProviderKeyEnc: Forms.aiProviderKeyEnc,
+    })
     .from(Forms)
     .where(eq(Forms.slug, slug))
   let form = rows.find(canView)
@@ -244,13 +253,24 @@ export const getPublicFormBySlug = query(async (raw: { slug: string }) => {
   // Fallback: if the provided slug looks like an id, try by id — allows /r/:id during transition
   if (!form && /^[\w-]{16,24}$/u.test(slug)) {
     rows = await db
-      .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId, slug: Forms.slug })
+      .select({ id: Forms.id, title: Forms.title, status: Forms.status, settingsJson: Forms.settingsJson, ownerUserId: Forms.ownerUserId, slug: Forms.slug, aiConfigJson: Forms.aiConfigJson, aiProviderKeyEnc: Forms.aiProviderKeyEnc })
       .from(Forms)
       .where(eq(Forms.id, slug))
     form = rows.find(canView)
   }
 
-  return form ?? null
+  if (!form)
+    return null
+
+  const aiCfg: any = (form as any).aiConfigJson
+  const hasAIConfig = Boolean(aiCfg?.provider && aiCfg?.modelId && typeof aiCfg?.prompt === 'string' && aiCfg?.prompt.trim().length > 0)
+  const hasProviderKey = Boolean((form as any).aiProviderKeyEnc)
+
+  const aiReady = hasAIConfig && hasProviderKey
+  const aiReason: 'ok' | 'missing_config' | 'missing_key' = aiReady ? 'ok' : (!hasAIConfig ? 'missing_config' : 'missing_key')
+
+  const { aiProviderKeyEnc: _omit, ...rest } = form as any
+  return { ...rest, aiReady, aiReason, hasAIConfig }
 }, 'forms:getPublicBySlug')
 
 export const deleteForm = action(async (raw: { formId: string }) => {

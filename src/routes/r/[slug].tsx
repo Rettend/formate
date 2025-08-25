@@ -477,6 +477,27 @@ export default function Respondent() {
               <Show when={form()?.settingsJson?.summary}>
                 <p class="text-base text-muted-foreground md:text-lg">{form()?.settingsJson?.summary}</p>
               </Show>
+              {/* form readiness warning (missing provider key) */}
+              <Show when={form()?.aiReason === 'missing_key'}>
+                <div class="border border-red-400/60 rounded-md bg-red-50 p-3 text-red-800 dark:(border-red-400/40 bg-red-950/30 text-red-200)">
+                  <div class="flex flex-col items-start gap-1 text-sm leading-relaxed">
+                    <div class="flex items-center gap-2">
+                      <span class="i-ph:warning-circle-bold" aria-hidden />
+                      <span>
+                        <b>This form isn't fully configured:</b>
+                        {' '}
+                        no LLM API key is set. Please contact the form creator.
+                      </span>
+                    </div>
+                    <Show when={isOwner()}>
+                      <div class="flex items-center gap-2">
+                        <span class="i-ph:wrench-bold" aria-hidden />
+                        <span class="mt-1 block opacity-90">Tip: add a provider API key in the form's settings.</span>
+                      </div>
+                    </Show>
+                  </div>
+                </div>
+              </Show>
               <Show when={form()?.settingsJson?.intro}>
                 <div class="mt-2 border rounded-md bg-muted/20 p-3 text-sm leading-relaxed">
                   {form()?.settingsJson?.intro}
