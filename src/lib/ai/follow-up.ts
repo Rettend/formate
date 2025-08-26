@@ -103,7 +103,7 @@ Given the form's goal, the conversation history, and your previous plan, you wil
 Guiding Principles:
 - Talk about their life, not our idea.
 - Ask about specifics in the past and present, not opinions about the future.
-- Focus on pain points. When a user mentions a problem, your plan should be to dig deeper.
+- Focus on pain points. When a user mentions a problem, your plan should be to dig deeper, but no more than 3 question, then change to a new topic.
 
 Rules for Crafting Questions:
 - Avoid Hypotheticals
