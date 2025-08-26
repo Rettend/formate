@@ -2,7 +2,7 @@ import type { JSX } from 'solid-js'
 import type { ModelConfigObject, Provider } from '~/lib/ai/lists'
 import type { FormPlan, TestRunStep } from '~/lib/validation/form-plan'
 import type { Form } from '~/server/db/schema'
-import { revalidate, useAction } from '@solidjs/router'
+import { createAsync, revalidate, useAction } from '@solidjs/router'
 import { createMemo, createSignal, For, Show, untrack } from 'solid-js'
 import { toast } from 'solid-sonner'
 import { ModelRatingDisplay } from '~/components/ModelRatings'
@@ -12,6 +12,7 @@ import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberField
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { aiErrorToMessage, logAIError } from '~/lib/ai/errors'
 import { getModelAlias, models } from '~/lib/ai/lists'
+import { isPremium } from '~/server'
 import { createTestRun, getForm, planWithAI, runTestStep, saveFormPrompt } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 import { decryptApiKey } from '~/utils/crypto'
@@ -39,6 +40,12 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
 
   const plan = createMemo<FormPlan | null>(() => props.form.settingsJson ?? null)
   const providerOptions = createMemo(() => Object.keys(models))
+  const premium = createAsync(() => isPremium())
+  const isProviderEnabled = (provider: string) => {
+    if (provider === 'formate')
+      return premium()
+    return Boolean(ui.apiKeys?.[provider])
+  }
 
   // Live runner state
   const [liveRunning, setLiveRunning] = createSignal(false)
@@ -257,6 +264,7 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
                 options={providerOptions()}
                 optionValue={p => p}
                 optionTextValue={p => p}
+                optionDisabled={p => !isProviderEnabled(p)}
                 value={llmProvider()}
                 onChange={(val) => {
                   const provider = val ?? null
@@ -274,7 +282,9 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
                 disallowEmptySelection={false}
                 selectionBehavior="toggle"
                 itemComponent={props => (
-                  <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>
+                  <SelectItem item={props.item}>
+                    {props.item.rawValue}
+                  </SelectItem>
                 )}
               >
                 <SelectTrigger aria-label="AI Provider">

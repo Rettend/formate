@@ -21,10 +21,12 @@ export interface GenerateFollowUpOptions {
   isFormateProvider: boolean
   /** Optional context tag for error logs. */
   logContext?: string
+  /** Mode to use for the model. */
+  mode?: 'json' | 'tool' | 'auto'
 }
 
 export async function generateFollowUpObject(options: GenerateFollowUpOptions): Promise<any> {
-  const { provider, modelId, apiKeyEnc, system, userPayload, schema, isFormateProvider, logContext } = options
+  const { provider, modelId, apiKeyEnc, system, userPayload, schema, isFormateProvider, logContext, mode } = options
 
   try {
     let apiKey: string | undefined
@@ -46,6 +48,7 @@ export async function generateFollowUpObject(options: GenerateFollowUpOptions): 
       provider,
       modelId,
       apiKey,
+      mode,
     })
 
     return isFormateProvider ? (resp as any).object.output : (resp as any).object
@@ -103,7 +106,8 @@ Given the form's goal, the conversation history, and your previous plan, you wil
 Guiding Principles:
 - Talk about their life, not our idea.
 - Ask about specifics in the past and present, not opinions about the future.
-- Focus on pain points. When a user mentions a problem, your plan should be to dig deeper, but no more than 3 question, then change to a new topic.
+- Focus on pain points. When a user mentions a problem, your plan should be to ask a follow-up question that digs deeper, but only one.
+- Do not get stuck on a single topic, after 2 questions, think of a new plan.
 
 Rules for Crafting Questions:
 - Avoid Hypotheticals
@@ -169,6 +173,7 @@ Return a question for the user and a plan for the next turn. You may also decide
     userPayload: user,
     schema,
     isFormateProvider,
+    mode: 'auto',
     logContext: 'conv:generateFollowUp',
   })
 
