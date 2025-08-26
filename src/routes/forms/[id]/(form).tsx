@@ -219,6 +219,12 @@ function FormDetail() {
                 <span>View</span>
               </Button>
             </A>
+            <A href={`/forms/${id()}/responses`}>
+              <Button size="sm" variant="outline">
+                <span class="i-ph:list-bullets-bold" />
+                <span>Responses</span>
+              </Button>
+            </A>
             <A href={`/invites#form-${form()?.slug || id()}`}>
               <Button size="sm" variant="outline">
                 <span class="i-ph:ticket-bold" />

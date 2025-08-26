@@ -1,7 +1,7 @@
 import type { Provider } from '~/lib/ai/lists'
 import process from 'node:process'
 import { action, query } from '@solidjs/router'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { getCookie, setCookie } from 'vinxi/http'
 import { z } from 'zod'
@@ -664,3 +664,114 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
   }).returning()
   return { kind: 'turn', turn: created }
 }
+
+// Owner admin queries
+const listFormConversationsSchema = z.object({
+  formId: idSchema,
+  status: z.enum(['active', 'completed']).optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+})
+
+export const listFormConversations = query(async (raw: { formId: string, status?: 'active' | 'completed', page?: number, pageSize?: number }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(listFormConversationsSchema, raw, 'conv:listByForm')
+
+  // Ownership check
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
+  if (!form)
+    throw new Error('Form not found')
+  if ((form as any).ownerUserId !== userId)
+    throw new Error('Forbidden')
+
+  const page = Math.max(1, input.page ?? 1)
+  const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 25))
+  const offset = (page - 1) * pageSize
+
+  const whereConds: any[] = [eq(Conversations.formId, input.formId)]
+  if (input.status)
+    whereConds.push(eq(Conversations.status, input.status))
+
+  const items = await db
+    .select({
+      id: Conversations.id,
+      status: Conversations.status,
+      startedAt: Conversations.startedAt,
+      completedAt: Conversations.completedAt,
+      clientMetaJson: Conversations.clientMetaJson,
+    })
+    .from(Conversations)
+    .where(and(...whereConds))
+    .orderBy(desc(Conversations.startedAt))
+    .limit(pageSize)
+    .offset(offset)
+
+  const convIds = items.map(i => i.id)
+  let countsMap = new Map<string, number>()
+  if (convIds.length > 0) {
+    const counts = await db
+      .select({ conversationId: Turns.conversationId, c: sql<number>`count(*)`.as('c') })
+      .from(Turns)
+      .where(inArray(Turns.conversationId, convIds))
+      .groupBy(Turns.conversationId)
+    countsMap = new Map(counts.map(r => [r.conversationId, Number((r as any).c ?? 0)]))
+  }
+
+  const parsed = items.map((i: any) => ({
+    id: i.id,
+    status: i.status,
+    startedAt: i.startedAt,
+    completedAt: i.completedAt,
+    steps: countsMap.get(i.id) ?? 0,
+    endReason: (() => {
+      const m = parseMeta(i.clientMetaJson)
+      const r = (m as any)?.end?.reason
+      return (r === 'hard_limit' || r === 'enough_info' || r === 'trolling') ? r : null
+    })(),
+  }))
+
+  return { items: parsed, page, pageSize }
+}, 'conv:listByForm')
+
+export const getConversationTranscript = query(async (raw: { conversationId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const { conversationId } = safeParseOrThrow(z.object({ conversationId: idSchema }), raw, 'conv:getTranscript')
+
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Error('Conversation not found')
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  if (!form)
+    throw new Error('Form not found')
+  if ((form as any).ownerUserId !== userId)
+    throw new Error('Forbidden')
+
+  const turns = await db
+    .select()
+    .from(Turns)
+    .where(eq(Turns.conversationId, conversationId))
+    .orderBy(asc(Turns.index))
+
+  return {
+    conversation: {
+      id: (conv as any).id,
+      formId: (conv as any).formId,
+      status: (conv as any).status,
+      startedAt: (conv as any).startedAt,
+      completedAt: (conv as any).completedAt,
+    },
+    turns,
+  }
+}, 'conv:transcript')
