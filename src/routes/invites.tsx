@@ -112,8 +112,8 @@ function Invites() {
                   </div>
                   <A href={`/forms/${f.id}`}>
                     <Button size="sm" variant="outline">
-                      <span class="i-ph:link-bold" />
-                      <span>Open</span>
+                      <span>View</span>
+                      <span class="i-ph:arrow-right-bold" />
                     </Button>
                   </A>
                 </div>

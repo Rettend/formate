@@ -115,9 +115,9 @@ function FormsList() {
             )}
             <For each={forms()?.items ?? []}>
               {item => (
-                <div class="group flex items-center justify-between p-4 transition-colors hover:bg-accent">
+                <div class="group flex items-center justify-between rounded-lg px-4 transition-colors hover:bg-accent">
                   {/* Left: title/status clickable */}
-                  <A href={`/forms/${item.id}`} class="min-w-0 flex-1">
+                  <A href={`/forms/${item.id}`} class="min-w-0 flex-1 py-4">
                     <p class="truncate font-medium">{item.title}</p>
                     <p class="text-xs text-muted-foreground">{optimisticStatus(item.id, item.status)}</p>
                   </A>

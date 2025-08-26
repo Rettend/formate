@@ -5,9 +5,11 @@ import { produce } from 'solid-js/store'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import FieldInput from '~/components/fields/FieldInput'
+import { ModelRatingDisplay } from '~/components/ModelRatings'
 import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
+import { getModelAlias, models, providers } from '~/lib/ai/lists'
 import { useAuth } from '~/lib/auth'
 import { answerQuestion, completeConversation, getOrCreateConversation, listTurns, resetConversation, respondentRewind, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
@@ -449,6 +451,17 @@ export default function Respondent() {
   const allowOAuth = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.access?.allowOAuth ?? true))
   const allowRespondentComplete = createMemo(() => Boolean(((form() as any)?.settingsJson as any)?.stopping?.allowRespondentComplete ?? false))
   const requiresInviteOnly = createMemo(() => Boolean(form()) && !allowOAuth())
+  const providerId = createMemo(() => (form() as any)?.aiConfigJson?.provider as string | undefined)
+  const modelId = createMemo(() => (form() as any)?.aiConfigJson?.modelId as string | undefined)
+  const providerTitle = createMemo(() => providers.find(p => p.id === providerId())?.title ?? (providerId() ?? ''))
+  const modelConfig = createMemo(() => {
+    const pid = providerId() as any
+    const mid = modelId()
+    if (!pid || !mid)
+      return undefined
+    const list = (models as any)[pid] as any[] | undefined
+    return list?.find(m => m.value === mid)
+  })
   const inviteRedeemedHint = createMemo(() => {
     try {
       if (typeof window !== 'undefined' && formId())
@@ -518,6 +531,18 @@ export default function Respondent() {
             {/* Header: Title + Summary + Intro (with fallbacks) */}
             <div class="space-y-3">
               <h1 class="text-3xl font-bold tracking-tight md:text-4xl">{form()?.title ?? 'Form'}</h1>
+              <Show when={providerId() && modelId()}>
+                <div class="inline-flex items-center gap-2 border rounded-md bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
+                  <span class="i-ph:cpu-duotone size-4" />
+                  <span>{providerTitle()}</span>
+                  <span class="opacity-60">/</span>
+                  <span>{modelConfig() ? getModelAlias(modelConfig() as any) : (modelId() ?? '')}</span>
+                  <Show when={modelConfig()}>
+                    <span class="ml-1" />
+                    <ModelRatingDisplay model={modelConfig() as any} />
+                  </Show>
+                </div>
+              </Show>
               <Show when={form()?.settingsJson?.summary}>
                 <p class="text-base text-muted-foreground md:text-lg">{form()?.settingsJson?.summary}</p>
               </Show>
