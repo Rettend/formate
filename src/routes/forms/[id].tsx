@@ -219,6 +219,12 @@ function FormDetail() {
                 <span>View</span>
               </Button>
             </A>
+            <A href={`/invites#form-${form()?.slug || id()}`}>
+              <Button size="sm" variant="outline">
+                <span class="i-ph:ticket-bold" />
+                <span>Invites</span>
+              </Button>
+            </A>
             <Button size="sm" variant="outline" onClick={handleDuplicate}>
               <span class="i-ph:copy-bold" />
               <span>Duplicate</span>

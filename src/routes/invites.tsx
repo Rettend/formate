@@ -1,6 +1,6 @@
 import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction } from '@solidjs/router'
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
@@ -23,6 +23,26 @@ function Invites() {
   const [editingLabel, setEditingLabel] = createSignal<{ jti: string, value: string } | null>(null)
 
   const byForm = createMemo(() => invites()?.byForm ?? {})
+
+  onMount(() => {
+    if (typeof window === 'undefined')
+      return
+
+    const applyHashScroll = () => {
+      const hash = window.location.hash.replace(/^#/, '')
+      if (!hash)
+        return
+      queueMicrotask(() => {
+        const el = document.getElementById(hash)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+
+    applyHashScroll()
+    const onHashChange = () => applyHashScroll()
+    window.addEventListener('hashchange', onHashChange)
+    onCleanup(() => window.removeEventListener('hashchange', onHashChange))
+  })
 
   const handleGenerate = async (formId: string, _slug?: string) => {
     const count = Math.max(1, Math.min(10, Number(countByForm()[formId] ?? 1)))
@@ -104,11 +124,19 @@ function Invites() {
         <div class="space-y-8">
           <For each={forms()?.items ?? []}>
             {f => (
-              <div class="border rounded-lg bg-card p-4 text-card-foreground">
+              <div id={`form-${f.slug || f.id}`} class="scroll-mt-20 border rounded-lg bg-card p-4 text-card-foreground">
                 <div class="flex items-center justify-between gap-2">
                   <div class="min-w-0">
                     <div class="truncate text-base font-medium">{f.title}</div>
-                    <div class="text-xs text-muted-foreground">ID: {f.id}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {f.slug
+                        ? (
+                            <span>Slug: <code class="code">/r/{f.slug}</code></span>
+                          )
+                        : (
+                            <span>ID: {f.id}</span>
+                          )}
+                    </div>
                   </div>
                   <A href={`/forms/${f.id}`}>
                     <Button size="sm" variant="outline">
