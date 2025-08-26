@@ -8,12 +8,14 @@ import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberField
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { listForms } from '~/server/forms'
 import { createInviteTokens, listInvitesByForm, revokeInvite, updateInviteLabel } from '~/server/invites'
+import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <Invites />, '/')
 
 function Invites() {
+  const { ui } = useUIStore()
   const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
-  const invites = createAsync(() => listInvitesByForm())
+  const invites = createAsync(() => listInvitesByForm({ formId: ui.selectedFormId ?? undefined }))
   const gen = useAction(createInviteTokens)
   const doRevoke = useAction(revokeInvite)
   const doUpdateLabel = useAction(updateInviteLabel)
@@ -23,6 +25,11 @@ function Invites() {
   const [editingLabel, setEditingLabel] = createSignal<{ jti: string, value: string } | null>(null)
 
   const byForm = createMemo(() => invites()?.byForm ?? {})
+  const visibleForms = createMemo(() => {
+    const all = forms()?.items ?? []
+    const fid = ui.selectedFormId
+    return fid ? all.filter(f => f.id === fid) : all
+  })
 
   onMount(() => {
     if (typeof window === 'undefined')
@@ -122,7 +129,7 @@ function Invites() {
         </div>
 
         <div class="space-y-8">
-          <For each={forms()?.items ?? []}>
+          <For each={visibleForms()}>
             {f => (
               <div id={`form-${f.slug || f.id}`} class="scroll-mt-20 border rounded-lg bg-card p-4 text-card-foreground">
                 <div class="flex items-center justify-between gap-2">

@@ -1,15 +1,21 @@
-import { A } from '@solidjs/router'
-import { Show } from 'solid-js'
+import { A, createAsync } from '@solidjs/router'
+import { createMemo, Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useAuth } from '~/lib/auth'
+import { listForms } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
 export function AppHeader() {
-  const { setUI } = useUIStore()
+  const { ui, setUI, actions } = useUIStore()
   const auth = useAuth()
   const redirectTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined
+
+  const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
+  const formOptions = createMemo(() => [{ id: '', title: 'All forms' }, ...((forms()?.items ?? []).map(f => ({ id: f.id, title: f.title })) as Array<{ id: string, title: string }>)])
+  const selectedId = createMemo(() => ui.selectedFormId ?? '')
 
   return (
     <header class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -19,6 +25,35 @@ export function AppHeader() {
             <img src="/formate.svg" alt="Formate" class="h-6 w-6" />
             <span>Formate</span>
           </A>
+          <Show when={auth.session().user}>
+            <div class="hidden min-w-44 sm:block">
+              <Select<{ id: string, title: string }, { id: string, title: string }>
+                options={formOptions()}
+                optionValue={o => o.id}
+                optionTextValue={o => o.title}
+                value={formOptions().find(o => o.id === selectedId())}
+                onChange={(opt) => {
+                  const id = opt?.id ?? ''
+                  actions.setSelectedForm(id === '' ? null : id)
+                }}
+                placeholder="All forms"
+                selectionBehavior="toggle"
+                disallowEmptySelection={false}
+                itemComponent={props => (
+                  <SelectItem item={props.item}>
+                    {props.item.rawValue.title}
+                  </SelectItem>
+                )}
+              >
+                <SelectTrigger aria-label="Form filter">
+                  <SelectValue<{ id: string, title: string }>>
+                    {state => state.selectedOption()?.title ?? 'All forms'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent />
+              </Select>
+            </div>
+          </Show>
         </div>
         <div class="flex items-center gap-2">
           <ModeToggle set={mode => setUI('mode', mode)} />

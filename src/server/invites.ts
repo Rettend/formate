@@ -170,7 +170,7 @@ export const resolveInviteCode = query(async (raw: { code: string }) => {
   return { formId, slug: (form as any)?.slug as string | undefined }
 }, 'invites:resolve')
 
-export const listInvitesByForm = query(async () => {
+export const listInvitesByForm = query(async (raw?: { formId?: string | null }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -178,13 +178,16 @@ export const listInvitesByForm = query(async () => {
   if (!userId)
     throw new Error('Unauthorized')
 
+  const input = (raw && typeof raw === 'object') ? raw : {}
+  const singleFormId = (typeof input.formId === 'string' && input.formId.trim().length > 0) ? input.formId.trim() : null
+
   const owned = await db
     .select({ id: Forms.id, title: Forms.title, slug: Forms.slug })
     .from(Forms)
     .where(eq(Forms.ownerUserId, userId))
     .orderBy(asc(Forms.title))
 
-  const formIds = owned.map(f => f.id)
+  const formIds = singleFormId ? owned.filter(f => f.id === singleFormId).map(f => f.id) : owned.map(f => f.id)
   if (formIds.length === 0)
     return { forms: [], byForm: {} as InvitesByForm }
 
@@ -221,7 +224,8 @@ export const listInvitesByForm = query(async () => {
       byForm[fid].unused.push({ jti: r.jti, code: r.code, label: r.label ?? null, createdAt: r.createdAt, expAt: r.expAt ?? null })
   }
 
-  return { forms: owned, byForm }
+  const formsOut = singleFormId ? owned.filter(f => f.id === singleFormId) : owned
+  return { forms: formsOut, byForm }
 }, 'invites:listAll')
 
 export const revokeInvite = action(async (raw: { jti: string }) => {

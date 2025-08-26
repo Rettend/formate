@@ -9,6 +9,7 @@ import { isServer } from 'solid-js/web'
 interface StoreState {
   mode: Mode
   apiKeys: Record<string, string>
+  selectedFormId?: string | null
   formsUi?: Record<string, {
     settingsTab?: 'access' | 'stopping'
     settingsOpen?: boolean
@@ -20,6 +21,7 @@ type StoreContextType = [Store<StoreState>, SetStoreFunction<StoreState>]
 interface UIStoreActions {
   setApiKey: (provider: string, value: string) => void
   deleteApiKey: (provider: string) => void
+  setSelectedForm: (formId: string | null) => void
   setFormSettingsTab: (formId: string, tab: 'access' | 'stopping') => void
   setFormSettingsOpen: (formId: string, open: boolean) => void
 }
@@ -33,6 +35,7 @@ export function UIStoreProvider(props: ParentProps) {
   const [baseState, setBaseState] = createStore<StoreState>({
     mode: 'system',
     apiKeys: {},
+    selectedFormId: null,
     formsUi: {},
   })
   const [state, setState] = makePersisted([baseState, setBaseState], {
@@ -84,6 +87,9 @@ export function useUIStore() {
       setUI('apiKeys', produce((apiKeys) => {
         delete (apiKeys)[provider]
       }))
+    },
+    setSelectedForm(formId: string | null) {
+      setUI('selectedFormId', formId ?? null)
     },
     setFormSettingsTab(formId: string, tab: 'access' | 'stopping') {
       setUI('formsUi', prev => prev ?? {})
