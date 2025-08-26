@@ -7,12 +7,10 @@
 - [x] respondent retries left label disappears on page refresh
 - [x] login on r/slug page shows for some reason even after the form starts
 - [x] add all llm providers, + builtin with azure
-
 - [x] forms/id: changing provider doesn't trigger save (because of select first model logic)
 - [x] forms/id: settings collapsible reopens after save and page refresh
 - [x] allow respondents to complete forms with a button
-
-- [ ] view form completions page
+- [x] view form completions page
 
 ## later
 
