@@ -626,7 +626,7 @@ export default function Respondent() {
                   {t => (
                     <div class="border rounded-lg bg-card p-4 text-card-foreground space-y-4" data-active-turn={t.status === 'awaiting_answer' ? '' : undefined}>
                       <div>
-                        <div class="text-sm font-medium">{t.questionJson?.label}</div>
+                        <div class="text-sm font-medium"><span class="mr-2 text-muted-foreground">{(t.index ?? 0) + 1}.</span>{t.questionJson?.label}</div>
                         <Show when={t.questionJson?.helpText}>
                           <div class="text-xs text-muted-foreground">{t.questionJson?.helpText}</div>
                         </Show>
@@ -686,7 +686,7 @@ export default function Respondent() {
                                 </Button>
                               </Show>
                               <Show when={!isOwner() && Number((form() as any)?.settingsJson?.access?.respondentBackLimit ?? 0) > 0 && backRemaining() !== null}>
-                                <div class="mr-2 text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} left</div>
+                                <div class="mr-2 text-xs text-muted-foreground">{Math.max(0, backRemaining() ?? 0)} rewinds left</div>
                               </Show>
                               <Show when={isOwner()}>
                                 <Button size="sm" variant="outline" onClick={() => handleReset()} disabled={loading()}>
