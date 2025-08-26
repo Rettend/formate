@@ -24,9 +24,9 @@ function Invites() {
   const [labelsByForm, setLabelsByForm] = createSignal<Record<string, string[]>>({})
   const [editingLabel, setEditingLabel] = createSignal<{ jti: string, value: string } | null>(null)
 
-  const byForm = createMemo(() => invites()?.byForm ?? {})
+  const byForm = createMemo(() => invites.latest?.byForm ?? {})
   const visibleForms = createMemo(() => {
-    const all = forms()?.items ?? []
+    const all = forms.latest?.items ?? []
     const fid = ui.selectedFormId
     return fid ? all.filter(f => f.id === fid) : all
   })
