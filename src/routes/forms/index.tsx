@@ -3,13 +3,14 @@ import { A, createAsync, revalidate, useAction, useSubmissions } from '@solidjs/
 import { createSignal, For, onCleanup } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
-import { deleteForm, listForms, publishForm, unpublishForm } from '~/server/forms'
+import { deleteForm, duplicateForm, listForms, publishForm, unpublishForm } from '~/server/forms'
 
 export default Protected(() => <FormsList />, '/')
 
 function FormsList() {
   const forms = createAsync(() => listForms({}))
   const remove = useAction(deleteForm)
+  const duplicate = useAction(duplicateForm)
   const publish = useAction(publishForm)
   const unpublish = useAction(unpublishForm)
   const publishSubs = useSubmissions(publishForm)
@@ -45,6 +46,10 @@ function FormsList() {
     else
       await publish({ formId: id })
     await revalidate([listForms.key])
+  }
+
+  const handleDuplicate = async (id: string) => {
+    await duplicate({ formId: id })
   }
 
   const handleShare = async (id: string, slug?: string | null) => {
@@ -146,6 +151,17 @@ function FormsList() {
                         <span class="i-ph:eye-bold size-4" />
                       </Button>
                     </A>
+                    {/* Duplicate */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
+                      title="Duplicate"
+                      aria-label="Duplicate"
+                      onClick={() => handleDuplicate(item.id)}
+                    >
+                      <span class="i-ph:copy-bold size-4" />
+                    </Button>
                     {/* Publish/Unpublish */}
                     <Button
                       variant="ghost"

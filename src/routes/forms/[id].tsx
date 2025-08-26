@@ -12,7 +12,7 @@ import { Checkbox } from '~/components/ui/checkbox'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { clearFormProviderKey, deleteForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, unpublishForm } from '~/server/forms'
+import { clearFormProviderKey, deleteForm, duplicateForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, unpublishForm, updateForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
 export const route = {
@@ -34,13 +34,17 @@ function FormDetail() {
   const unpublishSubs = useSubmissions(unpublishForm)
   const saveStoppingSubs = useSubmissions(saveFormStopping)
   const remove = useAction(deleteForm)
+  const duplicate = useAction(duplicateForm)
   const saveStopping = useAction(saveFormStopping)
   const saveKey = useAction(saveFormProviderKey)
   const clearKey = useAction(clearFormProviderKey)
   const saveAccess = useAction(saveFormAccess)
   const saveSlug = useAction(saveFormSlug)
+  const doUpdate = useAction(updateForm)
   const form = createAsync(() => getForm({ formId: id() }))
   const [saving, setSaving] = createSignal(false)
+  const [titleEditing, setTitleEditing] = createSignal(false)
+  const [titleDraft, setTitleDraft] = createSignal('')
   const [stopping, setStopping] = createSignal<{ hardLimit?: { maxQuestions: number }, llmMayEnd?: boolean, endReasons?: Array<'enough_info' | 'trolling'>, allowRespondentComplete?: boolean }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
   const tab = createMemo<'access' | 'stopping'>(() => ui.formsUi?.[id()]?.settingsTab ?? 'access')
@@ -131,13 +135,78 @@ function FormDetail() {
       nav('/forms')
   }
 
+  const handleDuplicate = async () => {
+    const res = await duplicate({ formId: id() })
+    if (res?.id)
+      nav(`/forms/${res.id}`)
+  }
+
+  const beginTitleEdit = () => {
+    const curr = form()?.title ?? 'Form'
+    setTitleDraft(curr)
+    setTitleEditing(true)
+    queueMicrotask(() => {
+      const input = document.getElementById('form-title-input') as HTMLInputElement | null
+      input?.focus()
+      input?.select()
+    })
+  }
+
+  const saveTitleIfChanged = async () => {
+    const curr = form()?.title ?? ''
+    const next = titleDraft().trim()
+    if (next.length === 0 || next === curr) {
+      setTitleEditing(false)
+      return
+    }
+    try {
+      setSaving(true)
+      await doUpdate({ formId: id(), patch: { title: next } })
+      await revalidate([getForm.key])
+    }
+    finally {
+      setSaving(false)
+      setTitleEditing(false)
+    }
+  }
+
   return (
     <AppShell>
       <section>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
             <h1 class="min-w-0 flex items-center gap-2 text-xl font-semibold tracking-tight">
-              <span class="truncate" title={form()?.title ?? 'Form'}>{form()?.title ?? 'Form'}</span>
+              <Show
+                when={!titleEditing()}
+                fallback={(
+                  <input
+                    id="form-title-input"
+                    type="text"
+                    class="max-w-[28rem] w-full truncate border-b border-transparent bg-transparent outline-none focus:border-b-2 focus:border-primary"
+                    value={titleDraft()}
+                    onInput={e => setTitleDraft((e.currentTarget as HTMLInputElement).value)}
+                    onBlur={() => { void saveTitleIfChanged() }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void saveTitleIfChanged()
+                      }
+                      else if (e.key === 'Escape') {
+                        setTitleEditing(false)
+                      }
+                    }}
+                  />
+                )}
+              >
+                <button
+                  type="button"
+                  class="max-w-[28rem] min-w-0 inline-flex items-center gap-2 text-left hover:opacity-90"
+                  title="Click to rename"
+                  onClick={beginTitleEdit}
+                >
+                  <span class="truncate">{form()?.title ?? 'Form'}</span>
+                </button>
+              </Show>
               <span class="shrink-0 text-sm text-muted-foreground">—</span>
               <span class="shrink-0 text-sm text-muted-foreground">{optimisticStatus()}</span>
             </h1>
@@ -150,6 +219,10 @@ function FormDetail() {
                 <span>View</span>
               </Button>
             </A>
+            <Button size="sm" variant="outline" onClick={handleDuplicate}>
+              <span class="i-ph:copy-bold" />
+              <span>Duplicate</span>
+            </Button>
             <Button size="sm" variant="outline" disabled={isPublishing() || isUnpublishing()} onClick={handleTogglePublish}>
               <span class={(isPublishing() || isUnpublishing()) ? 'i-svg-spinners:180-ring' : (optimisticStatus() === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
               <span>{optimisticStatus() === 'published' ? 'Unpublish' : 'Publish'}</span>

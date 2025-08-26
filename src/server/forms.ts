@@ -296,6 +296,45 @@ export const deleteForm = action(async (raw: { formId: string }) => {
   return { ok: deleted.rowsAffected > 0 }
 }, 'forms:delete')
 
+const duplicateFormSchema = z.object({ formId: idSchema })
+
+export const duplicateForm = action(async (raw: { formId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const { formId } = safeParseOrThrow(duplicateFormSchema, raw, 'forms:duplicate')
+
+  // Load original, ensure ownership
+  const [orig] = await db
+    .select()
+    .from(Forms)
+    .where(and(eq(Forms.id, formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!orig)
+    throw new Error('Not found')
+
+  const newTitle = `${orig.title || 'Untitled Form'} (copy)`
+
+  const [created] = await db
+    .insert(Forms)
+    .values({
+      ownerUserId: session.user.id,
+      title: newTitle,
+      slug: null as any,
+      aiConfigJson: (orig as any).aiConfigJson ?? null as any,
+      aiProviderKeyEnc: (orig as any).aiProviderKeyEnc ?? null as any,
+      seedQuestionJson: (orig as any).seedQuestionJson ?? null as any,
+      settingsJson: (orig as any).settingsJson ?? null as any,
+      status: 'draft',
+      updatedAt: new Date(),
+    })
+    .returning({ id: Forms.id })
+
+  return { id: created.id }
+}, 'forms:duplicate')
+
 const savePromptSchema = z.object({
   formId: idSchema,
   prompt: z.string().min(1).max(4000),
