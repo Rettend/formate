@@ -12,6 +12,8 @@ export const providers: ProviderDefinition[] = [
   { id: 'anthropic', title: 'Anthropic', placeholder: 'sk-ant-...' },
   { id: 'groq', title: 'Groq', placeholder: 'gsk_...' },
   { id: 'cerebras', title: 'Cerebras', placeholder: 'csk-...' },
+  { id: 'fireworks', title: 'Fireworks', placeholder: 'fw_...' },
+  { id: 'openrouter', title: 'OpenRouter', placeholder: 'sk-or-v1-...' },
 ] as const
 
 export type Provider = (typeof providers)[number]['id']
@@ -95,8 +97,6 @@ export const models: Record<Provider, ModelConfigObject[]> = {
     { value: 'openai/gpt-oss-20b', alias: 'gpt-oss 20B', iq: 3, speed: 5 },
     // Kimi K2: AAII 49, 200 tps
     { value: 'moonshotai/kimi-k2-instruct', alias: 'Kimi K2', iq: 3, speed: 4 },
-    // DeepSeek R1 Distill Llama 70B (reasoning): AAII 59, 260 tps
-    { value: 'deepseek-r1-distill-llama-70b', alias: 'DeepSeek R1 Distill Llama 70B', iq: 4, speed: 5 },
     // Qwen 3 32B: AAII 44 (removed), 400 tps
     { value: 'qwen-3-32b', alias: 'Qwen 3 32B', iq: 2, speed: 5 },
     // Llama 4 Maverick: AAII 42, 600 tps
@@ -115,6 +115,22 @@ export const models: Record<Provider, ModelConfigObject[]> = {
     { value: 'llama-4-maverick-17b-128e-instruct', alias: 'Llama 4 Maverick', iq: 2, speed: 5 },
     // Llama 4 Scout: AAII 33, 2600 tps
     { value: 'llama-4-scout-17b-16e-instruct', alias: 'Llama 4 Scout', iq: 1, speed: 5 },
+  ],
+  fireworks: [
+    // Qwen 3 235B Thinking: AAII 64, 117 tps
+    { value: 'accounts/fireworks/models/qwen3-235b-a22b-thinking-2507', alias: 'Qwen 3 235B Thinking', iq: 4, speed: 2 },
+    // Qwen 3 235B: AAII 51, 98 tps
+    { value: 'accounts/fireworks/models/qwen3-235b-a22b-instruct-2507', alias: 'Qwen 3 235B', iq: 3, speed: 2 },
+    // DeepSeek V3.1: AAII 49, 19 tps
+    { value: 'accounts/fireworks/models/deepseek-v3p1', alias: 'DeepSeek V3.1', iq: 3, speed: 0 },
+  ],
+  openrouter: [
+    // Claude Sonnet 4 (non-reasoning): AAII 46, 70 tps
+    { value: 'anthropic/claude-sonnet-4', alias: 'Claude Sonnet 4', iq: 3, speed: 2 },
+    // Gemini 2.5 Pro: AAII 65, 144 tps
+    { value: 'google/gemini-2.5-pro', alias: 'Gemini 2.5 Pro', iq: 5, speed: 3 },
+    // Grok 4: AAII 68, 51 tps
+    { value: 'x-ai/grok-4', alias: 'Grok 4', iq: 5, speed: 1 },
   ],
 }
 

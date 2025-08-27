@@ -86,40 +86,36 @@ export interface GenerateInterviewFollowUpInput {
   priorCount: number
   /** History up to the previous turn (<= indexValue - 1). */
   history: PriorTurnDigest[]
-  /** Previous plan string if any. */
-  previousPlan?: string
 }
 
 export type InterviewFollowUpResult
   = | { kind: 'end', reason: 'enough_info' | 'trolling', modelId: string }
-    | { kind: 'turn', question: FormField, plan?: string, modelId: string }
+    | { kind: 'turn', question: FormField, modelId: string }
 
 export async function generateInterviewFollowUp(input: GenerateInterviewFollowUpInput): Promise<InterviewFollowUpResult> {
-  const { provider, modelId, apiKeyEnc, formGoalPrompt, planSummary, stopping, indexValue, priorCount, history, previousPlan } = input
+  const { provider, modelId, apiKeyEnc, formGoalPrompt, planSummary, stopping, indexValue, priorCount, history } = input
 
   const system = `You are an expert user researcher conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
 
-Given the form's goal, the conversation history, and your previous plan, you will do two things:
-1. Formulate a new plan: Create a single-sentence internal goal for your next question. This is your hypothesis or the main thing you want to learn next. If the previous plan is still relevant, you can continue it. If the user's answer revealed a more important topic, create a new plan.
-2. Craft the next question: Ask a single, open-ended question that directly serves your new plan.
+Given the form's goal and the conversation history, craft the next single, open-ended question.
 
 Guiding Principles:
+- Be friendly; don't demand every exact detail at once from the respondent.
 - Talk about their life, not our idea.
 - Ask about specifics in the past and present, not opinions about the future.
-- Focus on pain points. When a user mentions a problem, your plan should be to ask a follow-up question that digs deeper, but only one.
-- Do not get stuck on a single topic, after 2 questions, think of a new plan.
+- Focus on pain points. When a user mentions a problem, ask ONE follow-up that digs deeper on that topic.
+- A common mistake you do is tunnel visioning on what the most recent answer said and only asking about that, even if it's irrelevant. To avoid this, try to ask about something different every 2 questions.
 
 Rules for Crafting Questions:
-- Avoid Hypotheticals
-- Focus On The Past/Present
-- Listen for emotion. When a user expresses frustration or boredom, your plan should investigate that feeling.
-- Pain Meter: When the user mentions a frustration, workaround, or inefficiency, try to quantify it concisely in the plan: frequency (e.g. times/week), cost (time/money/energy), and consequences/impact. You might have uncovered a pain point, but *how* painful is it? just a mild inconvenience or a major issue?
+- Avoid hypotheticals.
+- Focus on the past/present.
+- Listen for emotion. If the user expresses frustration or boredom, investigate that feeling.
 
 Defaults and Constraints:
 - Prefer conversational, open-ended prompts.
 - Default field type to long_text unless there is a clear reason to use another type from the allowed set.
 
-Return a question for the user and a plan for the next turn. You may also decide to end the interview early if you have enough information or the user is clearly not engaged.`
+Return only the next question for the user. You may also decide to end the interview early if you have enough information or the user is clearly not engaged.`
 
   const maxQuestions = stopping.hardLimit.maxQuestions
   const questionsLeft = Math.max(0, maxQuestions - priorCount)
@@ -135,7 +131,6 @@ Return a question for the user and a plan for the next turn. You may also decide
       allowed: Boolean(stopping.llmMayEnd),
       reasons: stopping.endReasons,
     },
-    previousPlan,
     progress: {
       maxQuestions,
       questionsLeft,
@@ -151,7 +146,6 @@ Return a question for the user and a plan for the next turn. You may also decide
   const endSchema = z.object({ end: z.object({ reason: z.enum(['enough_info', 'trolling']) }) })
   const turnSchema = z.object({
     question: formFieldSchema,
-    plan: z.string().min(1).describe('A single sentence explaining your internal goal for asking this question.'),
   })
 
   const isFormateProvider = provider === 'formate'
@@ -183,6 +177,5 @@ Return a question for the user and a plan for the next turn. You may also decide
   }
 
   const question = obj.question as FormField
-  const plan = (obj as any).plan as string | undefined
-  return { kind: 'turn', question, plan, modelId }
+  return { kind: 'turn', question, modelId }
 }

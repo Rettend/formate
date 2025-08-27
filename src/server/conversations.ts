@@ -645,11 +645,6 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
 
   await assertProviderAllowedForUser(provider, form.ownerUserId)
 
-  const previousPlan: string | undefined = (() => {
-    const last = [...priorTurns].sort((a: any, b: any) => b.index - a.index)[0]
-    const p = (last as any)?.plan
-    return typeof p === 'string' && p.trim() ? p : undefined
-  })()
   const result = await generateInterviewFollowUp({
     provider,
     modelId,
@@ -664,7 +659,6 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
       question: h.question ? { label: (h.question as any).label, type: (h.question as any).type } : undefined,
       answer: h.answer,
     })),
-    previousPlan,
   })
 
   if (result.kind === 'end')
@@ -676,13 +670,10 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  const plan = result.plan
-
   const [created] = await tx.insert(Turns).values({
     conversationId,
     index: indexValue,
     questionJson: question as any,
-    plan: plan as any,
     status: 'awaiting_answer',
   }).returning()
   return { kind: 'turn', turn: created }
