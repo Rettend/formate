@@ -6,6 +6,7 @@ import { A, createAsync, revalidate, useAction, useNavigate, useParams, useSubmi
 import { createMemo, createSignal, onMount, Show, untrack } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import CollapsibleCard from '~/components/CollapsibleCard'
+import ApiKeyInput from '~/components/fields/ApiKeyInput'
 import { LLMBuilder } from '~/components/forms/LLMBuilder'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -396,33 +397,24 @@ function FormDetail() {
                                   </div>
                                 )}
                               >
-                                <form
-                                  class="flex items-center gap-2"
-                                  onSubmit={(e) => {
-                                    e.preventDefault()
+                                <ApiKeyInput
+                                  placeholder="Paste provider API key"
+                                  value={providerKeyInput()}
+                                  onInput={v => setProviderKeyInput(v)}
+                                  onBlurSave={(v) => {
                                     const currentProvider = f?.aiConfigJson?.provider
                                     if (currentProvider === 'formate')
                                       return
-                                    const v = providerKeyInput().trim()
-                                    if (v.length === 0)
+                                    const trimmed = v.trim()
+                                    if (trimmed.length === 0)
                                       return
-                                    void saveKey({ formId: id(), apiKey: v }).then(async () => {
+                                    return saveKey({ formId: id(), apiKey: trimmed }).then(async () => {
                                       setProviderKeyInput('')
                                       await revalidate([getForm.key])
                                     })
                                   }}
-                                >
-                                  <input
-                                    type="password"
-                                    autocomplete="off"
-                                    placeholder="Paste provider API key"
-                                    class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
-                                    value={providerKeyInput()}
-                                    onInput={e => setProviderKeyInput((e.currentTarget as HTMLInputElement).value)}
-                                    disabled={f?.aiConfigJson?.provider === 'formate'}
-                                  />
-                                  <Button type="submit" size="sm" disabled={f?.aiConfigJson?.provider === 'formate'}>Save</Button>
-                                </form>
+                                  disabled={f?.aiConfigJson?.provider === 'formate'}
+                                />
                               </Show>
                             </div>
                           </div>

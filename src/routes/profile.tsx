@@ -2,6 +2,7 @@ import { Protected } from '@rttnd/gau/client/solid'
 import { createSignal, For, Show } from 'solid-js'
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
+import ApiKeyInput from '~/components/fields/ApiKeyInput'
 import { Button } from '~/components/ui/button'
 import { providers } from '~/lib/ai/lists'
 import { useAuth } from '~/lib/auth'
@@ -50,7 +51,7 @@ function Profile() {
               <div class="ml-auto">
                 <Button variant="destructive" size="sm" onClick={() => auth.signOut()}>
                   <span class="i-ph:sign-out-bold" />
-                  <span>Sign out</span>
+                  <span class="hidden sm:inline">Sign out</span>
                 </Button>
               </div>
             </div>
@@ -61,9 +62,9 @@ function Profile() {
               <div class="space-y-3">
                 <For each={providers.filter(p => p.placeholder)}>
                   {p => (
-                    <div class="flex items-center gap-3">
-                      <div class="w-36 text-sm font-medium">{p.title}</div>
-                      <div class="flex-1">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <div class="w-full text-sm font-medium sm:w-36">{p.title}</div>
+                      <div class="min-w-0 flex-1">
                         <Show
                           when={!ui.apiKeys[p.id]}
                           fallback={(
@@ -75,23 +76,12 @@ function Profile() {
                             </div>
                           )}
                         >
-                          <form
-                            class="flex items-center gap-2"
-                            onSubmit={(e) => {
-                              e.preventDefault()
-                              void saveKey(p.id, inputs()[p.id] || '')
-                            }}
-                          >
-                            <input
-                              type="password"
-                              autocomplete="off"
-                              placeholder={p.placeholder}
-                              class="h-10 w-full flex border border-input rounded-md bg-background px-3 py-2 text-sm focus:outline-none"
-                              value={inputs()[p.id] || ''}
-                              onInput={e => setInputs(prev => ({ ...prev, [p.id]: (e.currentTarget as HTMLInputElement).value }))}
-                            />
-                            <Button type="submit" size="sm">Save</Button>
-                          </form>
+                          <ApiKeyInput
+                            placeholder={p.placeholder}
+                            value={inputs()[p.id] || ''}
+                            onInput={v => setInputs(prev => ({ ...prev, [p.id]: v }))}
+                            onBlurSave={v => saveKey(p.id, v)}
+                          />
                         </Show>
                       </div>
                     </div>
