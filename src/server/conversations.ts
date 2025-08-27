@@ -496,6 +496,29 @@ export const resetConversation = action(async (raw: { conversationId: string }) 
   return { ok: true, firstTurnId: first[0]?.id }
 }, 'conv:reset')
 
+const deleteSchema = z.object({ conversationId: idSchema })
+
+export const deleteConversation = action(async (raw: { conversationId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = ensure(session?.user?.id, 'Unauthorized')
+  const { conversationId } = safeParseOrThrow(deleteSchema, raw, 'conv:delete')
+
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    return { ok: true }
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  if (!form)
+    throw new Error('Form not found')
+  if ((form as any).ownerUserId !== userId)
+    throw new Error('Forbidden')
+
+  await db.delete(Conversations).where(eq(Conversations.id, conversationId))
+
+  return { ok: true }
+}, 'conv:delete')
+
 // Helpers
 async function ensureFirstTurn(conversationId: string, formId: string) {
   const existing = await db
@@ -734,6 +757,8 @@ export const listFormConversations = query(async (raw: { formId: string, status?
       const r = (m as any)?.end?.reason
       return (r === 'hard_limit' || r === 'enough_info' || r === 'trolling') ? r : null
     })(),
+    provider: (form as any)?.aiConfigJson?.provider ?? null,
+    modelId: (form as any)?.aiConfigJson?.modelId ?? null,
   }))
 
   return { items: parsed, page, pageSize }
@@ -771,6 +796,11 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
       status: (conv as any).status,
       startedAt: (conv as any).startedAt,
       completedAt: (conv as any).completedAt,
+      endReason: (() => {
+        const m = parseMeta((conv as any).clientMetaJson)
+        const r = (m as any)?.end?.reason
+        return (r === 'hard_limit' || r === 'enough_info' || r === 'trolling') ? r : null
+      })(),
     },
     turns,
   }

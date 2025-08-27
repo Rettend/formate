@@ -67,7 +67,10 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
   const formId = raw?.formId ?? null
 
   // Restrict to owner forms
-  const owned = await db.select({ id: Forms.id, title: Forms.title }).from(Forms).where(eq(Forms.ownerUserId, userId))
+  const owned = await db
+    .select({ id: Forms.id, title: Forms.title, aiConfigJson: Forms.aiConfigJson })
+    .from(Forms)
+    .where(eq(Forms.ownerUserId, userId))
   const ownedIds = (formId ? owned.filter(f => f.id === formId) : owned).map(f => f.id)
   if (ownedIds.length === 0)
     return { items: [] as Array<any> }
@@ -113,6 +116,15 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     conversationId: r.id,
     formId: r.formId,
     formTitle: (formById.get(r.formId) as any)?.title ?? 'Form',
+    provider: (() => {
+      const f: any = formById.get(r.formId)
+      return (f?.aiConfigJson?.provider as string) ?? null
+    })(),
+    modelId: (() => {
+      const f: any = formById.get(r.formId)
+      return (f?.aiConfigJson?.modelId as string) ?? null
+    })(),
+    startedAt: r.startedAt,
     completedAt: r.completedAt,
     steps: turnCounts.get(r.id) ?? 0,
     respondent: (() => {
