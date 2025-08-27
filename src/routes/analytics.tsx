@@ -18,7 +18,7 @@ function Analytics() {
   const breakdown = createAsync(() => getFormBreakdown({ range: range(), formId: formId() }))
 
   const chartData = createMemo(() => {
-    const buckets = series()?.buckets ?? []
+    const buckets = series.latest?.buckets ?? []
     return {
       labels: buckets.map(b => b.date.slice(5)),
       datasets: [
@@ -55,15 +55,15 @@ function Analytics() {
         <div class="grid gap-4 lg:grid-cols-3 sm:grid-cols-2">
           <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
             <p class="text-xs text-muted-foreground">Started</p>
-            <p class="text-2xl font-semibold">{funnel()?.started ?? 0}</p>
+            <p class="text-2xl font-semibold">{funnel.latest?.started ?? 0}</p>
           </div>
           <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
             <p class="text-xs text-muted-foreground">Completed</p>
-            <p class="text-2xl font-semibold">{funnel()?.completed ?? 0}</p>
+            <p class="text-2xl font-semibold">{funnel.latest?.completed ?? 0}</p>
           </div>
           <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
             <p class="text-xs text-muted-foreground">Completion rate</p>
-            <p class="text-2xl font-semibold">{(funnel()?.completionRate ?? 0)}%</p>
+            <p class="text-2xl font-semibold">{(funnel.latest?.completionRate ?? 0)}%</p>
           </div>
         </div>
 
@@ -72,7 +72,7 @@ function Analytics() {
             <div class="mb-2 flex items-center justify-between">
               <h2 class="text-sm font-semibold">Completions over time</h2>
             </div>
-            <Show when={(series()?.buckets?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No data.</p>}>
+            <Show when={(series.latest?.buckets?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No data.</p>}>
               <div class="h-48 sm:h-64">
                 <LineChart data={chartData()} height={256} />
               </div>
@@ -83,9 +83,9 @@ function Analytics() {
             <div class="mb-2 flex items-center justify-between">
               <h2 class="text-sm font-semibold">Top forms</h2>
             </div>
-            <Show when={(breakdown()?.items?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No data.</p>}>
+            <Show when={(breakdown.latest?.items?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No data.</p>}>
               <div class="divide-y">
-                <For each={breakdown()?.items ?? []}>
+                <For each={breakdown.latest?.items ?? []}>
                   {it => (
                     <div class="flex items-center justify-between gap-3 py-2 text-sm">
                       <div class="min-w-0">

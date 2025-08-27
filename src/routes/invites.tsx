@@ -138,7 +138,7 @@ function Invites() {
                     <div class="text-xs text-muted-foreground">
                       {f.slug
                         ? (
-                            <span>Slug: <code class="code">/r/{f.slug}</code></span>
+                            <span>Slug: <code class="code">/{f.slug}</code></span>
                           )
                         : (
                             <span>ID: {f.id}</span>

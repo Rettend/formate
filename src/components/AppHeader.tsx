@@ -14,7 +14,10 @@ export function AppHeader() {
   const redirectTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined
 
   const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
-  const formOptions = createMemo(() => [{ id: '', title: 'All forms' }, ...((forms()?.items ?? []).map(f => ({ id: f.id, title: f.title })) as Array<{ id: string, title: string }>)])
+  const formOptions = createMemo(() => [
+    { id: '', title: 'All forms', slug: null },
+    ...(forms()?.items ?? []).map(f => ({ id: f.id, title: f.title, slug: f.slug })),
+  ])
   const selectedId = createMemo(() => ui.selectedFormId ?? '')
 
   return (
@@ -27,7 +30,7 @@ export function AppHeader() {
           </A>
           <Show when={auth.session().user}>
             <div class="hidden min-w-44 sm:block">
-              <Select<{ id: string, title: string }, { id: string, title: string }>
+              <Select<{ id: string, title: string, slug: string | null }>
                 options={formOptions()}
                 optionValue={o => o.id}
                 optionTextValue={o => o.title}
@@ -41,12 +44,17 @@ export function AppHeader() {
                 disallowEmptySelection={false}
                 itemComponent={props => (
                   <SelectItem item={props.item}>
-                    {props.item.rawValue.title}
+                    <div class="flex gap-2">
+                      <div>{props.item.rawValue.title}</div>
+                      {props.item.rawValue.slug && (
+                        <div class="text-xs text-muted-foreground">/{props.item.rawValue.slug}</div>
+                      )}
+                    </div>
                   </SelectItem>
                 )}
               >
                 <SelectTrigger aria-label="Form filter">
-                  <SelectValue<{ id: string, title: string }>>
+                  <SelectValue<{ id: string, title: string, slug: string | null }>>
                     {state => state.selectedOption()?.title ?? 'All forms'}
                   </SelectValue>
                 </SelectTrigger>

@@ -127,7 +127,7 @@ function FormsList() {
                     <span class="flex items-center gap-2">
                       <p class="text-xs text-muted-foreground">{optimisticStatus(item.id, item.status)}</p>
                       <span class="text-xs opacity-60">•</span>
-                      <p class="break-all text-xs text-muted-foreground">{item.slug ? `/r/${item.slug}` : `${item.id}`}</p>
+                      <p class="break-all text-xs text-muted-foreground">{item.slug ? `/${item.slug}` : `${item.id}`}</p>
                     </span>
                   </A>
 

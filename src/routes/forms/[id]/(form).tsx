@@ -336,7 +336,18 @@ function FormDetail() {
 
                             <div class="mb-4">
                               <label class="text-sm font-medium">Public name (slug)</label>
-                              <p class="mb-2 text-xs text-muted-foreground">Used in the URL. Only lowercase letters, numbers and hyphens. Example: <code class="code">/r/my-form</code></p>
+                              <p class="mb-2 text-xs text-muted-foreground">
+                                Used in the URL. Only lowercase letters, numbers and hyphens.
+                                {' '}
+                                <Show
+                                  when={form()?.slug}
+                                  fallback={
+                                    <span>Example: <code class="code">/r/my-form</code></span>
+                                  }
+                                >
+                                  <span>Preview: <code class="code">/r/{form()?.slug}</code></span>
+                                </Show>
+                              </p>
                               <form
                                 class="flex items-center gap-2"
                                 onSubmit={(e) => {
@@ -362,9 +373,6 @@ function FormDetail() {
                                 />
                                 <Button type="submit" size="sm">Save</Button>
                               </form>
-                              <Show when={form()?.slug}>
-                                <p class="mt-2 text-xs text-muted-foreground">Preview: <code class="code">/r/{form()?.slug}</code></p>
-                              </Show>
                             </div>
 
                             <h3 class="text-sm font-semibold">Provider API key</h3>
