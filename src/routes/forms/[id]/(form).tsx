@@ -27,7 +27,7 @@ export default Protected(() => <FormDetail />, '/')
 function FormDetail() {
   const { ui, actions } = useUIStore()
   const params = useParams()
-  const id = createMemo(() => params.id)
+  const formId = createMemo(() => params.id)
   const nav = useNavigate()
   const publish = useAction(publishForm)
   const unpublish = useAction(unpublishForm)
@@ -42,13 +42,13 @@ function FormDetail() {
   const saveAccess = useAction(saveFormAccess)
   const saveSlug = useAction(saveFormSlug)
   const doUpdate = useAction(updateForm)
-  const form = createAsync(() => getForm({ formId: id() }))
+  const form = createAsync(() => getForm({ formId: formId() }))
   const [saving, setSaving] = createSignal(false)
   const [titleEditing, setTitleEditing] = createSignal(false)
   const [titleDraft, setTitleDraft] = createSignal('')
   const [stopping, setStopping] = createSignal<{ hardLimit?: { maxQuestions: number }, llmMayEnd?: boolean, endReasons?: Array<'enough_info' | 'trolling'>, allowRespondentComplete?: boolean }>()
   const [providerKeyInput, setProviderKeyInput] = createSignal('')
-  const tab = createMemo<'access' | 'stopping'>(() => ui.formsUi?.[id()]?.settingsTab ?? 'access')
+  const tab = createMemo<'access' | 'stopping'>(() => ui.formsUi?.[formId()]?.settingsTab ?? 'access')
   const hasStoredKey = createMemo(() => Boolean(form()?.hasProviderKey))
 
   const getDefaultStoppingFromForm = () => {
@@ -85,7 +85,7 @@ function FormDetail() {
     const s = effectiveStopping()
     if (!s)
       return
-    await saveStopping({ formId: id(), stopping: s as any })
+    await saveStopping({ formId: formId(), stopping: s as any })
     await revalidate([getForm.key])
   }
 
@@ -96,15 +96,15 @@ function FormDetail() {
   const handleTogglePublish = async () => {
     const status = form()?.status
     if (status === 'published')
-      await unpublish({ formId: id() })
+      await unpublish({ formId: formId() })
     else
-      await publish({ formId: id() })
+      await publish({ formId: formId() })
     await revalidate([getForm.key])
   }
 
   const handleShare = async () => {
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    const url = `${base}/r/${form()?.slug || id()}`
+    const url = `${base}/r/${form()?.slug || formId()}`
     try {
       await navigator.clipboard.writeText(url)
     }
@@ -120,8 +120,8 @@ function FormDetail() {
     return arg.formId
   }
 
-  const isPublishing = () => publishSubs.values().some(s => s.pending && getInputFormId(s.input) === id())
-  const isUnpublishing = () => unpublishSubs.values().some(s => s.pending && getInputFormId(s.input) === id())
+  const isPublishing = () => publishSubs.values().some(s => s.pending && getInputFormId(s.input) === formId())
+  const isUnpublishing = () => unpublishSubs.values().some(s => s.pending && getInputFormId(s.input) === formId())
   const optimisticStatus = () => {
     if (isPublishing())
       return 'published'
@@ -131,13 +131,13 @@ function FormDetail() {
   }
 
   const handleDelete = async () => {
-    const res = await remove({ formId: id() })
+    const res = await remove({ formId: formId() })
     if (res?.ok)
       nav('/forms')
   }
 
   const handleDuplicate = async () => {
-    const res = await duplicate({ formId: id() })
+    const res = await duplicate({ formId: formId() })
     if (res?.id)
       nav(`/forms/${res.id}`)
   }
@@ -162,7 +162,7 @@ function FormDetail() {
     }
     try {
       setSaving(true)
-      await doUpdate({ formId: id(), patch: { title: next } })
+      await doUpdate({ formId: formId(), patch: { title: next } })
       await revalidate([getForm.key])
     }
     finally {
@@ -211,22 +211,22 @@ function FormDetail() {
               <span class="shrink-0 text-sm text-muted-foreground">—</span>
               <span class="shrink-0 text-sm text-muted-foreground">{optimisticStatus()}</span>
             </h1>
-            <p class="break-all text-sm text-muted-foreground">ID: {id()}</p>
+            <p class="break-all text-sm text-muted-foreground">ID: {formId()}</p>
           </div>
           <div class="w-full flex flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-            <A href={`/r/${form()?.slug || id()}`}>
+            <A href={`/r/${form()?.slug || formId()}`}>
               <Button size="sm" variant="outline">
                 <span class="i-ph:eye-bold" />
                 <span>View</span>
               </Button>
             </A>
-            <A href={`/forms/${id()}/responses`}>
+            <A href={`/responses?formId=${formId()}`}>
               <Button size="sm" variant="outline">
                 <span class="i-ph:list-bullets-bold" />
                 <span>Responses</span>
               </Button>
             </A>
-            <A href={`/invites#form-${form()?.slug || id()}`}>
+            <A href={`/invites#form-${form()?.slug || formId()}`}>
               <Button size="sm" variant="outline">
                 <span class="i-ph:ticket-bold" />
                 <span>Invites</span>
@@ -252,7 +252,7 @@ function FormDetail() {
         </div>
 
         <div class="relative pt-4 text-card-foreground">
-          <Show when={saving() || saveStoppingSubs.values().some(s => s.pending && getInputFormId(s.input) === id())}>
+          <Show when={saving() || saveStoppingSubs.values().some(s => s.pending && getInputFormId(s.input) === formId())}>
             <div class="pointer-events-none absolute right-2 top-2 z-10">
               <div class="pointer-events-auto flex items-center gap-2 border rounded-md bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm">
                 <span class="i-svg-spinners:180-ring" />
@@ -273,13 +273,13 @@ function FormDetail() {
                     <CollapsibleCard
                       title="Settings"
                       defaultOpen
-                      open={ui.formsUi?.[id()]?.settingsOpen}
-                      onOpenChange={open => actions.setFormSettingsOpen(id(), open)}
+                      open={ui.formsUi?.[formId()]?.settingsOpen}
+                      onOpenChange={open => actions.setFormSettingsOpen(formId(), open)}
                     >
                       <Tabs
                         value={tab()}
                         onChange={(v) => {
-                          actions.setFormSettingsTab(id(), v as 'access' | 'stopping')
+                          actions.setFormSettingsTab(formId(), v as 'access' | 'stopping')
                         }}
                         class="w-full"
                       >
@@ -297,7 +297,7 @@ function FormDetail() {
                                 id="allow-oauth-respondents"
                                 checked={Boolean(f?.settingsJson?.access?.allowOAuth ?? true)}
                                 onChange={(v) => {
-                                  void saveAccess({ formId: id(), access: { allowOAuth: Boolean(v) } })
+                                  void saveAccess({ formId: formId(), access: { allowOAuth: Boolean(v) } })
                                     .then(() => revalidate([getForm.key]))
                                 }}
                               />
@@ -317,7 +317,7 @@ function FormDetail() {
                                   const input = e.currentTarget.querySelector('input[name=respondentBackLimit]') as HTMLInputElement | null
                                   const v = Number((input?.value ?? '').trim())
                                   const value = Number.isFinite(v) ? Math.max(0, Math.min(10, Math.trunc(v))) : 0
-                                  void saveAccess({ formId: id(), access: { respondentBackLimit: value } })
+                                  void saveAccess({ formId: formId(), access: { respondentBackLimit: value } })
                                     .then(() => revalidate([getForm.key]))
                                 }}
                               >
@@ -355,7 +355,7 @@ function FormDetail() {
                                   e.preventDefault()
                                   const input = e.currentTarget.querySelector('input[name=slug]') as HTMLInputElement | null
                                   const value = (input?.value || '').trim()
-                                  void saveSlug({ formId: id(), slug: value }).then(async () => {
+                                  void saveSlug({ formId: formId(), slug: value }).then(async () => {
                                     await revalidate([getForm.key])
                                   }).catch((err) => {
                                     console.error('Save slug failed', err)
@@ -391,7 +391,7 @@ function FormDetail() {
                                 fallback={(
                                   <div class="h-10 flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3">
                                     <p class="text-sm">API Key saved</p>
-                                    <Button variant="ghost" size="icon" onClick={() => { void clearKey({ formId: id() }).then(() => revalidate([getForm.key])) }}>
+                                    <Button variant="ghost" size="icon" onClick={() => { void clearKey({ formId: formId() }).then(() => revalidate([getForm.key])) }}>
                                       <span class="i-ph:trash-duotone size-5" />
                                     </Button>
                                   </div>
@@ -408,7 +408,7 @@ function FormDetail() {
                                     const trimmed = v.trim()
                                     if (trimmed.length === 0)
                                       return
-                                    return saveKey({ formId: id(), apiKey: trimmed }).then(async () => {
+                                    return saveKey({ formId: formId(), apiKey: trimmed }).then(async () => {
                                       setProviderKeyInput('')
                                       await revalidate([getForm.key])
                                     })

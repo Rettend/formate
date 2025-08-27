@@ -93,7 +93,7 @@ function Analytics() {
                         <div class="mt-0.5 text-xs text-muted-foreground">{it.completed} completed · {it.completionRate}% · avg {it.avgSteps} steps</div>
                       </div>
                       <div class="shrink-0">
-                        <A class="text-xs text-primary" href={`/forms/${it.formId}/responses`}>Responses →</A>
+                        <A class="text-xs text-primary" href={`/responses?formId=${it.formId}`}>Responses →</A>
                       </div>
                     </div>
                   )}

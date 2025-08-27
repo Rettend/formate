@@ -1,4 +1,4 @@
-import type { RouteDefinition } from '@solidjs/router'
+import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, useParams } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
@@ -6,18 +6,14 @@ import { Button } from '~/components/ui/button'
 import { getConversationTranscript } from '~/server/conversations'
 import { getForm } from '~/server/forms'
 
-export const route = {
-  preload({ params }) {
-    return getForm({ formId: params.id })
-  },
-} satisfies RouteDefinition
+export default Protected(() => <Transcript />, '/')
 
-export default function Transcript() {
+function Transcript() {
   const params = useParams()
-  const formId = createMemo(() => params.id)
-  const conversationId = createMemo(() => params.conversationId)
-  const form = createAsync(() => getForm({ formId: formId() }))
+  const conversationId = createMemo(() => params.id)
   const data = createAsync(() => getConversationTranscript({ conversationId: conversationId() }))
+  const formId = createMemo(() => (data.latest as any)?.conversation?.formId as string | undefined)
+  const form = createAsync(async () => (formId() ? getForm({ formId: formId() as string }) : null))
 
   return (
     <AppShell>
@@ -27,7 +23,7 @@ export default function Transcript() {
             <h1 class="text-xl font-semibold tracking-tight">Transcript</h1>
             <p class="text-sm text-muted-foreground">{form()?.title ?? 'Form'}</p>
           </div>
-          <A href={`/forms/${formId()}/responses`} class="inline-flex">
+          <A href={formId() ? `/responses?formId=${formId()}` : '/responses'} class="inline-flex">
             <Button variant="outline" size="sm">
               <span class="i-ph:arrow-left-bold" />
               <span>Back to responses</span>

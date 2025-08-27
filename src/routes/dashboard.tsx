@@ -66,7 +66,7 @@ function Dashboard() {
                       </div>
                     </div>
                     <div class="shrink-0">
-                      <A href={`/forms/${it.formId}/responses/${it.conversationId}`} class="text-xs text-primary">Open →</A>
+                      <A href={`/responses/${it.conversationId}`} class="text-xs text-primary">Open →</A>
                     </div>
                   </li>
                 )}

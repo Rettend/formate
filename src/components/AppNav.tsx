@@ -8,9 +8,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Home', icon: 'i-ph:house-duotone' },
   { href: '/dashboard', label: 'Dashboard', icon: 'i-ph:squares-four-duotone' },
   { href: '/forms', label: 'Forms', icon: 'i-ph:files-duotone' },
+  { href: '/responses', label: 'Responses', icon: 'i-ph:chat-teardrop-text-duotone' },
   { href: '/analytics', label: 'Analytics', icon: 'i-ph:chart-line-up-duotone' },
   { href: '/invites', label: 'Invites', icon: 'i-ph:ticket-duotone' },
   { href: '/profile', label: 'Profile', icon: 'i-ph:user-circle-duotone' },
@@ -28,7 +28,7 @@ export function AppSidebar() {
 
   return (
     <aside class="hidden sm:block lg:w-56 sm:w-14">
-      <nav class="sticky top-21 flex flex-col gap-1">
+      <nav class="sticky top-20 flex flex-col gap-1">
         <For each={NAV_ITEMS}>
           {item => (
             <A
