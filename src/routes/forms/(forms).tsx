@@ -1,8 +1,9 @@
 import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction, useSubmissions } from '@solidjs/router'
-import { createSignal, For, onCleanup } from 'solid-js'
+import { createSignal, For, onCleanup, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { deleteForm, duplicateForm, listForms, publishForm, unpublishForm } from '~/server/forms'
 
 export default Protected(() => <FormsList />, '/')
@@ -132,18 +133,7 @@ function FormsList() {
                   </A>
 
                   {/* Right: quick actions */}
-                  <div class="ml-4 flex translate-x-1 items-center gap-1 opacity-90 transition duration-200 group-hover:translate-x-0 group-focus-within:opacity-100 group-hover:opacity-100">
-                    {/* Open */}
-                    <A href={`/forms/${item.id}`} title="Open" class="inline-flex">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="text-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground"
-                        aria-label="Open"
-                      >
-                        <span class="i-ph:caret-right-bold size-4" />
-                      </Button>
-                    </A>
+                  <div class="ml-4 hidden translate-x-1 items-center gap-1 opacity-90 transition duration-200 sm:flex group-hover:translate-x-0 group-focus-within:opacity-100 group-hover:opacity-100">
                     {/* View (respondent) */}
                     <A href={`/r/${item.slug || item.id}`} title="View" class="inline-flex">
                       <Button
@@ -200,6 +190,65 @@ function FormsList() {
                     >
                       <span class={confirmingId() === item.id ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
                     </Button>
+                  </div>
+
+                  {/* Mobile actions dropdown */}
+                  <div class="ml-2 flex items-center sm:hidden">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="text-foreground/70 hover:bg-transparent hover:text-foreground"
+                          aria-label="More actions"
+                          title="More actions"
+                        >
+                          <span class="i-ph:dots-three-bold size-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent class="min-w-44">
+                        <A href={`/r/${item.slug || item.id}`} class="block">
+                          <DropdownMenuItem>
+                            <span class="i-ph:eye-bold" />
+                            <span>View</span>
+                          </DropdownMenuItem>
+                        </A>
+                        <DropdownMenuItem onClick={() => handleShare(item.id, item.slug)}>
+                          <span class="i-ph:link-bold" />
+                          <span>Copy link</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDuplicate(item.id)}>
+                          <span class="i-ph:copy-bold" />
+                          <span>Duplicate</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handlePublishToggle(item.id, optimisticStatus(item.id, item.status))}
+                          disabled={isPublishing(item.id) || isUnpublishing(item.id)}
+                        >
+                          <span class={isPublishing(item.id) || isUnpublishing(item.id) ? 'i-svg-spinners:180-ring' : (optimisticStatus(item.id, item.status) === 'published' ? 'i-ph:cloud-slash-bold' : 'i-ph:cloud-arrow-up-bold')} />
+                          <span>{optimisticStatus(item.id, item.status) === 'published' ? 'Unpublish' : 'Publish'}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <Show
+                          when={confirmingId() !== item.id}
+                          fallback={(
+                            <DropdownMenuItem class="text-destructive" onClick={() => handleDelete(item.id)}>
+                              <span class="i-ph:check-bold" />
+                              <span>Confirm delete</span>
+                            </DropdownMenuItem>
+                          )}
+                        >
+                          <DropdownMenuItem
+                            class="text-destructive"
+                            closeOnSelect={false}
+                            onClick={() => handleDelete(item.id)}
+                          >
+                            <span class="i-ph:trash-bold" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </Show>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               )}
