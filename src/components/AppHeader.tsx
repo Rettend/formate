@@ -1,5 +1,5 @@
 import { A, createAsync } from '@solidjs/router'
-import { createMemo, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
@@ -28,6 +28,37 @@ export function AppHeader() {
             <img src="/formate.svg" alt="Formate" class="h-6 w-6" />
             <span>Formate</span>
           </A>
+          {/* Mobile: icon-only trigger for form filter */}
+          <Show when={auth.session().user}>
+            <div class="sm:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <Button variant="ghost" size="sm" aria-label="Form filter" class="px-2">
+                    <span class="i-ph:funnel-duotone size-5 p-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent class="min-w-44">
+                  <For each={formOptions()}>
+                    {opt => (
+                      <DropdownMenuItem onClick={() => {
+                        const id = opt.id ?? ''
+                        actions.setSelectedForm(id === '' ? null : id)
+                      }}
+                      >
+                        <div class="flex items-center gap-2">
+                          <span class={selectedId() === opt.id ? 'i-ph:check-bold size-4 opacity-80' : 'size-4 opacity-0'} />
+                          <span class="truncate">{opt.title}</span>
+                          {opt.slug && (
+                            <span class="text-xs text-muted-foreground">/{opt.slug}</span>
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </Show>
           <Show when={auth.session().user}>
             <div class="hidden min-w-44 sm:block">
               <Select<{ id: string, title: string, slug: string | null }>
