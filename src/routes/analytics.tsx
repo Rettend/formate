@@ -2,6 +2,7 @@ import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync } from '@solidjs/router'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
+import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { Button } from '~/components/ui/button'
 import { LineChart } from '~/components/ui/charts'
 import { getCompletionTimeSeries, getFormBreakdown, getFunnelStats } from '~/server/analytics'
@@ -38,12 +39,7 @@ function Analytics() {
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-xl font-semibold tracking-tight">Analytics</h1>
-            <Show when={formId()}>
-              <div class="mt-1 inline-flex items-center gap-2 rounded-md bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-                <span class="i-ph:funnel-duotone" />
-                <span>Filtered to one form</span>
-              </div>
-            </Show>
+            <FormFilterBadge />
           </div>
           <div class="flex items-center gap-2">
             <Button size="sm" variant={range() === '7d' ? 'default' : 'outline'} onClick={() => setRange('7d')}>7d</Button>

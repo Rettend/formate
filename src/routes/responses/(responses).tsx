@@ -1,26 +1,20 @@
 import { Protected } from '@rttnd/gau/client/solid'
-import { A, createAsync, useSearchParams } from '@solidjs/router'
+import { A, createAsync } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
+import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { listRecentCompletions } from '~/server/analytics'
 import { listFormConversations } from '~/server/conversations'
-import { getForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <ResponsesPage />, '/')
 
 function ResponsesPage() {
   const { ui } = useUIStore()
-  const [search] = useSearchParams()
 
-  const urlFormId = createMemo(() => {
-    const v = search.formId
-    return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null
-  })
   const selectedFormId = createMemo(() => ui.selectedFormId ?? null)
-  const formId = createMemo(() => urlFormId() ?? selectedFormId())
+  const formId = createMemo(() => selectedFormId())
 
-  const form = createAsync(async () => (formId() ? getForm({ formId: formId() as string }) : null))
   const conversations = createAsync(async () => (formId() ? listFormConversations({ formId: formId() as string, page: 1, pageSize: 25 }) : null))
   const recent = createAsync(async () => (!formId() ? listRecentCompletions({ limit: 25 }) : null))
 
@@ -30,9 +24,10 @@ function ResponsesPage() {
         <div class="mb-6 flex items-center justify-between">
           <div>
             <h1 class="text-xl font-semibold tracking-tight">Responses</h1>
-            <Show when={formId()} fallback={<p class="text-sm text-muted-foreground">Recent completions across your forms</p>}>
-              <p class="text-sm text-muted-foreground">{form.latest?.title ?? 'Form'}</p>
+            <Show when={!formId()}>
+              <p class="text-sm text-muted-foreground">Recent completions across your forms</p>
             </Show>
+            <FormFilterBadge />
           </div>
         </div>
 

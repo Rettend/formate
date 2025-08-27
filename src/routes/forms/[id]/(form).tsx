@@ -220,14 +220,32 @@ function FormDetail() {
                 <span>View</span>
               </Button>
             </A>
-            <A href={`/responses?formId=${formId()}`}>
-              <Button size="sm" variant="outline">
+            <A
+              href="/responses"
+              onMouseUp={(e) => {
+                if (e.button === 0 || e.button === 1)
+                  actions.setSelectedForm(formId())
+              }}
+            >
+              <Button
+                size="sm"
+                variant="outline"
+              >
                 <span class="i-ph:list-bullets-bold" />
                 <span>Responses</span>
               </Button>
             </A>
-            <A href={`/invites#form-${form()?.slug || formId()}`}>
-              <Button size="sm" variant="outline">
+            <A
+              href="/invites"
+              onMouseUp={(e) => {
+                if (e.button === 0 || e.button === 1)
+                  actions.setSelectedForm(formId())
+              }}
+            >
+              <Button
+                size="sm"
+                variant="outline"
+              >
                 <span class="i-ph:ticket-bold" />
                 <span>Invites</span>
               </Button>

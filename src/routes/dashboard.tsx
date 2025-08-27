@@ -2,6 +2,7 @@ import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
+import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { Button } from '~/components/ui/button'
 import { getDashboardStats, listRecentCompletions } from '~/server/analytics'
 import { useUIStore } from '~/stores/ui'
@@ -20,12 +21,7 @@ function Dashboard() {
           <div>
             <h1 class="text-xl font-semibold tracking-tight">Dashboard</h1>
             <p class="text-sm text-muted-foreground">Overview and quick actions</p>
-            <Show when={formId()}>
-              <div class="mt-1 inline-flex items-center gap-2 rounded-md bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-                <span class="i-ph:funnel-duotone" />
-                <span>Filtered to one form</span>
-              </div>
-            </Show>
+            <FormFilterBadge />
           </div>
           <A href="/forms/new" class="inline-flex">
             <Button variant="default" size="sm">Create form</Button>

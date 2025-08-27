@@ -1,15 +1,17 @@
 import { Protected } from '@rttnd/gau/client/solid'
-import { A, createAsync, useParams } from '@solidjs/router'
+import { A, createAsync, useNavigate, useParams } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
-import { Button } from '~/components/ui/button'
 import { getConversationTranscript } from '~/server/conversations'
 import { getForm } from '~/server/forms'
+import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <Transcript />, '/')
 
 function Transcript() {
+  const { actions } = useUIStore()
   const params = useParams()
+  const _nav = useNavigate()
   const conversationId = createMemo(() => params.id)
   const data = createAsync(() => getConversationTranscript({ conversationId: conversationId() }))
   const formId = createMemo(() => (data.latest as any)?.conversation?.formId as string | undefined)
@@ -23,11 +25,16 @@ function Transcript() {
             <h1 class="text-xl font-semibold tracking-tight">Transcript</h1>
             <p class="text-sm text-muted-foreground">{form()?.title ?? 'Form'}</p>
           </div>
-          <A href={formId() ? `/responses?formId=${formId()}` : '/responses'} class="inline-flex">
-            <Button variant="outline" size="sm">
-              <span class="i-ph:arrow-left-bold" />
-              <span>Back to responses</span>
-            </Button>
+          <A
+            href="/responses"
+            class="inline-flex items-center gap-2 border rounded-md px-3 py-2 text-sm hover:bg-accent"
+            onMouseUp={(e) => {
+              if ((e.button === 0 || e.button === 1) && formId())
+                actions.setSelectedForm(formId()!)
+            }}
+          >
+            <span class="i-ph:arrow-left-bold" />
+            <span>Back to responses</span>
           </A>
         </div>
 
