@@ -3,10 +3,12 @@ import type { Provider } from './lists'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createAzure } from '@ai-sdk/azure'
 import { createCerebras } from '@ai-sdk/cerebras'
+import { createFireworks } from '@ai-sdk/fireworks'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createGroq } from '@ai-sdk/groq'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createXai } from '@ai-sdk/xai'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { generateObject, streamObject, streamText } from 'ai'
 import { serverEnv } from '~/env/server'
 
@@ -39,6 +41,12 @@ export function getProvider(provider: Provider, id: string, apiKey?: string) {
     case 'cerebras': {
       return createCerebras({ apiKey })(id)
     }
+    case 'fireworks': {
+      return createFireworks({ apiKey })(id)
+    }
+    case 'openrouter': {
+      return createOpenRouter({ apiKey })(id)
+    }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }
@@ -61,8 +69,8 @@ export async function generateStructured(options: {
   provider: Provider
   modelId: string
   apiKey?: string
-  providerOptions?: any
   mode?: 'json' | 'tool' | 'auto'
+  providerOptions?: any
 }) {
   const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
   return generateObject({
