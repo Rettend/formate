@@ -13,7 +13,11 @@ export function AppHeader() {
   const auth = useAuth()
   const redirectTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined
 
-  const forms = createAsync(() => listForms({ page: 1, pageSize: 100 }))
+  const forms = createAsync(async () => {
+    if (!auth.session().user)
+      return { items: [], page: 1, pageSize: 100 }
+    return listForms({ page: 1, pageSize: 100 })
+  })
   const formOptions = createMemo(() => [
     { id: '', title: 'All forms', slug: null },
     ...(forms()?.items ?? []).map(f => ({ id: f.id, title: f.title, slug: f.slug })),
