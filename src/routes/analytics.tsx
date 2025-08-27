@@ -68,18 +68,18 @@ function Analytics() {
         </div>
 
         <div class="grid gap-4 lg:grid-cols-2">
-          <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
+          <div class="overflow-hidden border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
             <div class="mb-2 flex items-center justify-between">
               <h2 class="text-sm font-semibold">Completions over time</h2>
             </div>
             <Show when={(series.latest?.buckets?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No data.</p>}>
-              <div class="h-48 sm:h-64">
+              <div class="h-48 w-full sm:h-64">
                 <LineChart data={chartData()} height={256} />
               </div>
             </Show>
           </div>
 
-          <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
+          <div class="overflow-hidden border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
             <div class="mb-2 flex items-center justify-between">
               <h2 class="text-sm font-semibold">Top forms</h2>
             </div>

@@ -4,6 +4,7 @@
   - Don't fix these: unexpected console statement, input order, unocss class order, indentation, etc
 - The terminal is Windows CMD, so linux commands are not available.
 - No need to care about backwards compatibility whatsoever, no one uses the app, we change what we want. It's more important to create the best implementation, instead of worrying about breaking changes
+- Do not run the dev script, I run it
 
 ## SolidJS
 
