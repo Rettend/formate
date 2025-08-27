@@ -62,6 +62,7 @@ export async function generateStructured(options: {
   modelId: string
   apiKey?: string
   providerOptions?: any
+  mode?: 'json' | 'tool' | 'auto'
 }) {
   const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
   return generateObject({
@@ -69,7 +70,7 @@ export async function generateStructured(options: {
     schema: options.schema,
     messages: options.messages,
     providerOptions: options.providerOptions,
-    mode: 'tool',
+    mode: options.mode ?? 'auto',
   })
 }
 

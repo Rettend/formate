@@ -4,6 +4,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-j
 import { toast } from 'solid-sonner'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { listForms } from '~/server/forms'
@@ -136,13 +137,12 @@ function Invites() {
                   <div class="min-w-0">
                     <div class="truncate text-base font-medium">{f.title}</div>
                     <div class="text-xs text-muted-foreground">
-                      {f.slug
-                        ? (
-                            <span>Slug: <code class="code">/{f.slug}</code></span>
-                          )
-                        : (
-                            <span>ID: {f.id}</span>
-                          )}
+                      <Show
+                        when={f.slug}
+                        fallback={<span>{f.id}</span>}
+                      >
+                        <span><code class="code">/{f.slug}</code></span>
+                      </Show>
                     </div>
                   </div>
                   <A href={`/forms/${f.id}`}>
@@ -235,7 +235,7 @@ function Invites() {
                                   </div>
                                   <div class="mt-1 text-xs text-muted-foreground">Created {new Date(inv.createdAt as any).toLocaleString()}{inv.expAt ? ` · Expires ${new Date(inv.expAt as any).toLocaleString()}` : ''}</div>
                                 </div>
-                                <div class="flex items-center gap-1">
+                                <div class="hidden items-center gap-1 sm:flex">
                                   <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
                                     <span class="i-ph:copy-bold" />
                                   </Button>
@@ -245,6 +245,29 @@ function Invites() {
                                   <Button size="icon" variant="ghost" class="text-destructive" title="Revoke" onClick={() => handleRevoke(inv.jti)}>
                                     <span class="i-ph:trash-simple-bold" />
                                   </Button>
+                                </div>
+                                <div class="sm:hidden">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger>
+                                      <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+                                        <span class="i-ph:dots-three-bold size-5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent class="min-w-44">
+                                      <DropdownMenuItem onClick={() => copyLink(inv.code)}>
+                                        <span class="i-ph:link-bold" />
+                                        <span>Copy link</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => startEdit(inv.jti, inv.label)}>
+                                        <span class="i-ph:pencil-simple-line-bold" />
+                                        <span>Edit label</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem class="text-destructive" onClick={() => handleRevoke(inv.jti)}>
+                                        <span class="i-ph:trash-simple-bold" />
+                                        <span>Revoke</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </li>
                             )}
@@ -266,10 +289,25 @@ function Invites() {
                                   </div>
                                   <div class="mt-1 text-xs text-muted-foreground">Used {new Date(inv.usedAt as any).toLocaleString()}</div>
                                 </div>
-                                <div class="flex items-center gap-1">
+                                <div class="hidden items-center gap-1 sm:flex">
                                   <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
                                     <span class="i-ph:copy-bold" />
                                   </Button>
+                                </div>
+                                <div class="sm:hidden">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger>
+                                      <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+                                        <span class="i-ph:dots-three-bold size-5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent class="min-w-44">
+                                      <DropdownMenuItem onClick={() => copyLink(inv.code)}>
+                                        <span class="i-ph:link-bold" />
+                                        <span>Copy link</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </li>
                             )}
@@ -291,10 +329,25 @@ function Invites() {
                                   </div>
                                   <div class="mt-1 text-xs text-muted-foreground">Revoked {new Date((inv as any).revokedAt).toLocaleString()}</div>
                                 </div>
-                                <div class="flex items-center gap-1">
+                                <div class="hidden items-center gap-1 sm:flex">
                                   <Button size="icon" variant="ghost" title="Copy link" onClick={() => copyLink(inv.code)}>
                                     <span class="i-ph:copy-bold" />
                                   </Button>
+                                </div>
+                                <div class="sm:hidden">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger>
+                                      <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+                                        <span class="i-ph:dots-three-bold size-5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent class="min-w-44">
+                                      <DropdownMenuItem onClick={() => copyLink(inv.code)}>
+                                        <span class="i-ph:link-bold" />
+                                        <span>Copy link</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </li>
                             )}
