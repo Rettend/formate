@@ -487,7 +487,7 @@ function FormDetail() {
                                     }}
                                   />
                                   <div class="grid gap-1.5 leading-none">
-                                    <Label for="respondent-complete">Show "Complete" button to respondents</Label>
+                                    <Label for="respondent-complete">Show <span class="code">End form</span> button to respondents</Label>
                                     <p class="text-xs text-muted-foreground">Let respondents finish anytime. Owner always has full controls.</p>
                                   </div>
                                 </div>
