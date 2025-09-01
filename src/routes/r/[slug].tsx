@@ -8,6 +8,7 @@ import FieldInput from '~/components/fields/FieldInput'
 import { ModelRatingDisplay } from '~/components/ModelRatings'
 import { SignInCard } from '~/components/SignInCard'
 import { Button } from '~/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { Skeleton } from '~/components/ui/skeleton'
 import { getModelAlias, models, providers } from '~/lib/ai/lists'
 import { useAuth } from '~/lib/auth'
@@ -70,6 +71,7 @@ export default function Respondent() {
   const [inviteHandled, setInviteHandled] = createSignal(false)
   const [session, setSession] = useRespondentSessionStore()
   const [prefillByTurnId, setPrefillByTurnId] = createSignal<Record<string, unknown>>({})
+  const [confirmCompleteOpen, setConfirmCompleteOpen] = createSignal(false)
 
   function hasInviteCookie(fid?: string | null): boolean {
     if (!fid || typeof document === 'undefined')
@@ -267,8 +269,8 @@ export default function Respondent() {
       setLoading(false)
     }
   }
-
   const handleComplete = async () => {
+    setConfirmCompleteOpen(false)
     const convId = progress()?.conversationId
     if (!convId)
       return
@@ -695,10 +697,32 @@ export default function Respondent() {
                                 </Button>
                               </Show>
                               <Show when={!isOwner() && allowRespondentComplete() && !isCompleted()}>
-                                <Button size="sm" variant="outline" onClick={() => handleComplete()} disabled={loading()}>
-                                  <span class="i-ph:check-circle-bold" />
-                                  <span>Complete</span>
-                                </Button>
+                                <Dialog open={confirmCompleteOpen()} onOpenChange={setConfirmCompleteOpen}>
+                                  <Button size="sm" variant="outline" onClick={() => setConfirmCompleteOpen(true)} disabled={loading()}>
+                                    <span>End form</span>
+                                  </Button>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Submit and finish?</DialogTitle>
+                                      <DialogDescription>
+                                        This will mark the conversation as completed.<br />
+                                        You won't be able to answer more questions.
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter>
+                                      <div class="w-full flex items-center justify-end gap-2">
+                                        <Button variant="ghost" onClick={() => setConfirmCompleteOpen(false)} disabled={loading()}>Cancel</Button>
+                                        <Button
+                                          variant="default"
+                                          onClick={handleComplete}
+                                          disabled={loading()}
+                                        >
+                                          <span>Confirm</span>
+                                        </Button>
+                                      </div>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
                               </Show>
                             </div>
                             <Show when={loading()}>
