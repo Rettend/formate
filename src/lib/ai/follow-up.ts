@@ -95,8 +95,7 @@ export type InterviewFollowUpResult
 export async function generateInterviewFollowUp(input: GenerateInterviewFollowUpInput): Promise<InterviewFollowUpResult> {
   const { provider, modelId, apiKeyEnc, formGoalPrompt, planSummary, stopping, indexValue, priorCount, history } = input
 
-  const system = `You are an expert user researcher conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
-
+  const system = `You are conducting an interview based on "The Mom Test" methodology. Your goal is to understand the user's life, problems, and past behaviors.
 Given the form's goal and the conversation history, craft the next single, open-ended question.
 
 Guiding Principles:

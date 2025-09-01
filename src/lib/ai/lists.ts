@@ -22,7 +22,6 @@ export interface ModelConfigObject {
   value: string
   alias?: string
   mode?: 'json' | 'auto'
-  providerType?: 'azure-openai' | 'azure-ai-inference'
   iq?: 0 | 1 | 2 | 3 | 4 | 5
   speed?: 0 | 1 | 2 | 3 | 4 | 5
 }
@@ -48,13 +47,15 @@ export interface ModelConfigObject {
  */
 export const models: Record<Provider, ModelConfigObject[]> = {
   formate: [
-    { value: 'model-router', alias: 'Auto', providerType: 'azure-openai', iq: 3, speed: 3 },
+    // OpenAI GPT-5 (high): AAII 68
+    { value: 'gpt-5', alias: 'GPT-5', iq: 5, speed: 3 },
     // OpenAI GPT-5 mini (medium): AAII 64
-    { value: 'gpt-5-mini', alias: 'GPT-5 mini', providerType: 'azure-openai', iq: 4, speed: 3 },
+    { value: 'gpt-5-mini', alias: 'GPT-5 mini', iq: 4, speed: 3 },
     // OpenAI GPT-5 nano (medium): AAII 54
-    { value: 'gpt-5-nano', alias: 'GPT-5 nano', providerType: 'azure-openai', iq: 3, speed: 3 },
+    { value: 'gpt-5-nano', alias: 'GPT-5 nano', iq: 3, speed: 3 },
     // OpenAI GPT-4.1: AAII 47
-    { value: 'gpt-4.1', alias: 'GPT-4.1', providerType: 'azure-openai', iq: 3, speed: 3 },
+    { value: 'gpt-4.1', alias: 'GPT-4.1', iq: 3, speed: 3 },
+    { value: 'model-router', alias: 'Auto', iq: 3, speed: 3 },
   ],
   openai: [
     // GPT-5 (medium): AAII 68, 180 tps
@@ -131,6 +132,8 @@ export const models: Record<Provider, ModelConfigObject[]> = {
     { value: 'google/gemini-2.5-pro', alias: 'Gemini 2.5 Pro', iq: 5, speed: 3 },
     // Grok 4: AAII 68, 51 tps
     { value: 'x-ai/grok-4', alias: 'Grok 4', iq: 5, speed: 1 },
+    // DeepSeek V3.1: AAII 49, 32 tps
+    { value: 'deepseek/deepseek-chat-v3.1', alias: 'DeepSeek V3.1', iq: 3, speed: 1 },
   ],
 }
 

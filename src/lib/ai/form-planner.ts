@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { generateStructured } from '~/lib/ai'
 import { formPlanSchema, testRunTranscriptSchema } from '~/lib/validation/form-plan'
 
-const SYSTEM_INSTRUCTIONS = `You are an expert interview/form designer.
-Write a a form intro, outro, and form summary for the respondents.
+const SYSTEM_INSTRUCTIONS = `Write a brief form intro and outro for the respondents.
+Then write a very short one-sentence form summary.
 Design a concise, open-ended seed question (type long_text by default) as the first, warm-up question for the form.
 Use only these field types: short_text, long_text, multiple_choice, multi_select, boolean, rating, number.`
 
@@ -15,7 +15,7 @@ function buildPlanningMessages(prompt: string): ModelMessage[] {
     { role: 'system', content: SYSTEM_INSTRUCTIONS },
     {
       role: 'user',
-      content: `Goal & constraints (single prompt):\n${prompt}\n\nOutput a JSON object matching the provided schema strictly.`,
+      content: `Goal & constraints:\n${prompt}`,
     },
   ]
 }
@@ -66,7 +66,7 @@ export async function simulateTestRun(options: {
       modelId: options.modelId,
       apiKey: options.apiKey,
       messages: [
-        { role: 'system', content: 'Answer concisely as a realistic respondent. No preface, only the answer. Return only JSON.' },
+        { role: 'system', content: 'Answer concisely as a realistic respondent.' },
         { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
       ],
       providerOptions: { temperature: 0.5 },
@@ -74,8 +74,6 @@ export async function simulateTestRun(options: {
     steps.push({ step: i + 1, question: f, answer: (object as any).answer })
   }
 
-  // Validate before returning
-  // TODO: AI SDK already validates input and output -> delete
   const transcript = testRunTranscriptSchema.parse(steps)
   return { transcript }
 }
