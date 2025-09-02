@@ -22,13 +22,13 @@ export default createHandler(() => (
           <meta property="og:type" content="website" />
           <meta property="og:title" content="Formate — LLM-powered conversational form builder" />
           <meta property="og:description" content="Design and run conversational, interview-style surveys powered by LLMs." />
-          <meta property="og:image" content="/thumbnail.webp" />
+          <meta property="og:image" content="https://formate.app/thumbnail.webp" />
 
           {/* Twitter defaults */}
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Formate — LLM-powered conversational form builder" />
           <meta name="twitter:description" content="Design and run conversational, interview-style surveys powered by LLMs." />
-          <meta name="twitter:image" content="/thumbnail.webp" />
+          <meta name="twitter:image" content="https://formate.app/thumbnail.webp" />
 
           {assets}
         </head>

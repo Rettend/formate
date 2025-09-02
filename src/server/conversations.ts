@@ -685,6 +685,9 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
   }
   catch (e: any) {
     const msg = String(e?.message || e)
+    console.log('e', e)
+    console.log('msg', msg)
+    console.log('code', e?.code)
     if (msg.includes('UNIQUE constraint failed')) {
       const [existing] = await tx
         .select()
