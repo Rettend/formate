@@ -626,6 +626,10 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
+  const existingNext = priorTurns.find((t: any) => t.index === indexValue)
+  if (existingNext)
+    return { kind: 'turn', turn: existingNext }
+
   const history = priorTurns
     .filter((t: any) => t.index <= indexValue - 1)
     .map((t: any) => ({
@@ -670,13 +674,28 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  const [created] = await tx.insert(Turns).values({
-    conversationId,
-    index: indexValue,
-    questionJson: question as any,
-    status: 'awaiting_answer',
-  }).returning()
-  return { kind: 'turn', turn: created }
+  try {
+    const [created] = await tx.insert(Turns).values({
+      conversationId,
+      index: indexValue,
+      questionJson: question as any,
+      status: 'awaiting_answer',
+    }).returning()
+    return { kind: 'turn', turn: created }
+  }
+  catch (e: any) {
+    const msg = String(e?.message || e)
+    if (msg.includes('UNIQUE constraint failed')) {
+      const [existing] = await tx
+        .select()
+        .from(Turns)
+        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+        .limit(1)
+      if (existing)
+        return { kind: 'turn', turn: existing }
+    }
+    throw e
+  }
 }
 
 // Owner admin queries
