@@ -117,23 +117,26 @@ function ResponsesPage() {
                   <div class="flex items-center justify-between gap-3 py-3">
                     <div class="min-w-0">
                       <div class="flex items-center gap-2 text-sm">
-                        <Show when={!formId()} fallback={<span class="font-medium capitalize">{(it as any).status}</span>}>
-                          <span class="font-medium capitalize">{(it as any).formTitle}</span>
+                        <Show when={!formId()} fallback={<span class="font-medium capitalize">{it.status}</span>}>
+                          <span class="font-medium capitalize">{it.formTitle}</span>
+                          <Show when={it.formSlug}>
+                            <span class="text-xs text-muted-foreground">/{it.formSlug}</span>
+                          </Show>
                         </Show>
-                        <Show when={(it as any).endReason}>
+                        <Show when={it.endReason}>
                           <span class="opacity-60">•</span>
-                          <span class="text-xs text-muted-foreground">End: {(it as any).endReason}</span>
+                          <span class="text-xs text-muted-foreground">End: {it.endReason}</span>
                         </Show>
                       </div>
                       <div class="mt-0.5 text-xs text-muted-foreground">
-                        <span>Steps: {(it as any).steps}</span>
+                        <span>Steps: {it.steps}</span>
                         <span class="mx-2 opacity-60">•</span>
-                        <Show when={(it as any).provider && (it as any).modelId}>
-                          <span class="text-xs text-muted-foreground">{(it as any).provider} / {(it as any).modelId}</span>
+                        <Show when={it.provider && it.modelId}>
+                          <span class="text-xs text-muted-foreground">{it.provider} / {it.modelId}</span>
                         </Show>
                         <span class="mx-2 opacity-60">•</span>
-                        <Show when={(it as any).completedAt} fallback={<span>Started {new Date((it as any).startedAt!).toLocaleString()}</span>}>
-                          <span>Completed {new Date((it as any).completedAt!).toLocaleString()}</span>
+                        <Show when={it.completedAt} fallback={<span>Started {new Date(it.startedAt!).toLocaleString()}</span>}>
+                          <span>Completed {new Date(it.completedAt!).toLocaleString()}</span>
                         </Show>
                       </div>
                     </div>
@@ -142,13 +145,13 @@ function ResponsesPage() {
                         variant="ghost"
                         size="icon"
                         class="text-destructive/90 hover:bg-transparent hover:text-destructive"
-                        title={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'Click to confirm delete' : 'Delete'}
-                        aria-label={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'Confirm delete' : 'Delete'}
-                        onClick={() => { void handleDelete(((it as any).id ?? (it as any).conversationId) as string) }}
+                        title={confirmingId() === it.id ? 'Click to confirm delete' : 'Delete'}
+                        aria-label={confirmingId() === it.id ? 'Confirm delete' : 'Delete'}
+                        onClick={() => { void handleDelete(it.id) }}
                       >
-                        <span class={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
+                        <span class={confirmingId() === it.id ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
                       </Button>
-                      <A href={`/responses/${((it as any).id ?? (it as any).conversationId)}`} class="text-xs text-primary">{formId() ? 'View' : 'Open'} →</A>
+                      <A href={`/responses/${it.id}`} class="text-xs text-primary">{formId() ? 'View' : 'Open'} →</A>
                     </div>
                   </div>
                 )}

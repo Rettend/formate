@@ -809,6 +809,9 @@ export const listFormConversations = query(async (raw: { formId: string, status?
 
   const parsed = visible.map(i => ({
     id: i.id,
+    formId: form.id,
+    formTitle: form.title,
+    formSlug: form.slug ?? null,
     status: i.status,
     startedAt: i.startedAt,
     completedAt: i.completedAt,
@@ -838,7 +841,7 @@ export const listOwnerConversations = query(async (raw?: { status?: 'active' | '
   const offset = (page - 1) * pageSize
 
   const ownedForms = await db
-    .select({ id: Forms.id, title: Forms.title, aiConfigJson: Forms.aiConfigJson })
+    .select({ id: Forms.id, title: Forms.title, slug: Forms.slug, aiConfigJson: Forms.aiConfigJson })
     .from(Forms)
     .where(eq(Forms.ownerUserId, userId))
   const formIds = ownedForms.map(f => f.id)
@@ -894,9 +897,10 @@ export const listOwnerConversations = query(async (raw?: { status?: 'active' | '
       return (v === 'hard_limit' || v === 'enough_info' || v === 'trolling') ? v : null
     })()
     return {
-      conversationId: r.id,
+      id: r.id,
       formId: r.formId,
       formTitle: f?.title ?? 'Form',
+      formSlug: f?.slug ?? null,
       provider: f?.aiConfigJson?.provider ?? null,
       modelId: f?.aiConfigJson?.modelId ?? null,
       status: r.status,
