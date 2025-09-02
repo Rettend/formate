@@ -1,7 +1,11 @@
+import type { ExtractTablesWithRelations, SQLWrapper } from 'drizzle-orm'
+import type { SQLiteTransaction } from 'drizzle-orm/sqlite-core'
+import type { Turn } from './db/schema'
+import type * as DBSchema from './db/schema'
 import type { Provider } from '~/lib/ai/lists'
 import process from 'node:process'
 import { action, query } from '@solidjs/router'
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { getCookie, setCookie } from 'vinxi/http'
 import { z } from 'zod'
@@ -632,8 +636,12 @@ function parseMeta(meta: any): any {
   return (meta && typeof meta === 'object') ? meta : {}
 }
 
-async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexValue: number): Promise<
-  | { kind: 'turn', turn: any }
+async function createFollowUpTurnOrEndTx(
+  tx: SQLiteTransaction<'async', any, typeof DBSchema, ExtractTablesWithRelations<typeof DBSchema>>,
+  conversationId: string,
+  indexValue: number,
+): Promise<
+  | { kind: 'turn', turn: Turn }
   | { kind: 'end', reason: Exclude<EndReason, 'hard_limit'>, modelId?: string }
 > {
   const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
@@ -683,15 +691,15 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
   const result = await generateInterviewFollowUp({
     provider,
     modelId,
-    apiKeyEnc: (form as any).aiProviderKeyEnc,
+    apiKeyEnc: form.aiProviderKeyEnc,
     formGoalPrompt: prompt,
-    planSummary: (form as any).settingsJson?.summary ?? undefined,
+    planSummary: form.settingsJson?.summary ?? undefined,
     stopping,
     indexValue,
     priorCount: priorTurns.length,
-    history: history.map((h: any) => ({
+    history: history.map(h => ({
       index: h.index,
-      question: h.question ? { label: (h.question as any).label, type: (h.question as any).type } : undefined,
+      question: h.question ? { label: h.question.label, type: h.question.type } : undefined,
       answer: h.answer,
     })),
   })
@@ -710,7 +718,7 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     .values({
       conversationId,
       index: indexValue,
-      questionJson: question as any,
+      questionJson: question,
       status: 'awaiting_answer',
     })
     .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
@@ -729,7 +737,7 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     return { kind: 'turn', turn: existing }
 
   // As a last resort, signal end to avoid looping; caller will re-check status
-  return { kind: 'end', reason: 'enough_info' as any }
+  return { kind: 'end', reason: 'enough_info' }
 }
 
 // Owner admin queries
@@ -754,7 +762,7 @@ export const listFormConversations = query(async (raw: { formId: string, status?
   const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
   if (!form)
     throw new Error('Form not found')
-  if ((form as any).ownerUserId !== userId)
+  if (form.ownerUserId !== userId)
     throw new Error('Forbidden')
 
   const page = Math.max(1, input.page ?? 1)
@@ -764,6 +772,12 @@ export const listFormConversations = query(async (raw: { formId: string, status?
   const whereConds: any[] = [eq(Conversations.formId, input.formId)]
   if (input.status)
     whereConds.push(eq(Conversations.status, input.status))
+
+  const [totalRows] = await db
+    .select({ c: count() })
+    .from(Conversations)
+    .where(and(...whereConds))
+  const total = Number(totalRows?.c ?? 0)
 
   const items = await db
     .select({
@@ -776,21 +790,24 @@ export const listFormConversations = query(async (raw: { formId: string, status?
     .from(Conversations)
     .where(and(...whereConds))
     .orderBy(desc(Conversations.startedAt))
-    .limit(pageSize)
+    .limit(pageSize + 1)
     .offset(offset)
 
-  const convIds = items.map(i => i.id)
+  const hasMore = items.length > pageSize
+  const visible = items.slice(0, pageSize)
+
+  const convIds = visible.map(i => i.id)
   let countsMap = new Map<string, number>()
   if (convIds.length > 0) {
     const counts = await db
-      .select({ conversationId: Turns.conversationId, c: sql<number>`count(*)`.as('c') })
+      .select({ conversationId: Turns.conversationId, c: count() })
       .from(Turns)
       .where(inArray(Turns.conversationId, convIds))
       .groupBy(Turns.conversationId)
-    countsMap = new Map(counts.map(r => [r.conversationId, Number((r as any).c ?? 0)]))
+    countsMap = new Map(counts.map(r => [r.conversationId, Number(r.c ?? 0)]))
   }
 
-  const parsed = items.map((i: any) => ({
+  const parsed = visible.map(i => ({
     id: i.id,
     status: i.status,
     startedAt: i.startedAt,
@@ -798,15 +815,100 @@ export const listFormConversations = query(async (raw: { formId: string, status?
     steps: countsMap.get(i.id) ?? 0,
     endReason: (() => {
       const m = parseMeta(i.clientMetaJson)
-      const r = (m as any)?.end?.reason
+      const r = m?.end?.reason
       return (r === 'hard_limit' || r === 'enough_info' || r === 'trolling') ? r : null
     })(),
-    provider: (form as any)?.aiConfigJson?.provider ?? null,
-    modelId: (form as any)?.aiConfigJson?.modelId ?? null,
+    provider: form?.aiConfigJson?.provider ?? null,
+    modelId: form?.aiConfigJson?.modelId ?? null,
   }))
 
-  return { items: parsed, page, pageSize }
+  return { items: parsed, page, pageSize, hasMore, total }
 }, 'conv:listByForm')
+
+export const listOwnerConversations = query(async (raw?: { status?: 'active' | 'completed', page?: number, pageSize?: number }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = session?.user?.id
+  if (!userId)
+    throw new Error('Unauthorized')
+
+  const page = Math.max(1, Number(raw?.page ?? 1))
+  const pageSize = Math.min(100, Math.max(1, Number(raw?.pageSize ?? 25)))
+  const offset = (page - 1) * pageSize
+
+  const ownedForms = await db
+    .select({ id: Forms.id, title: Forms.title, aiConfigJson: Forms.aiConfigJson })
+    .from(Forms)
+    .where(eq(Forms.ownerUserId, userId))
+  const formIds = ownedForms.map(f => f.id)
+  if (formIds.length === 0)
+    return { items: [], page, pageSize, hasMore: false }
+
+  const whereConds: SQLWrapper[] = [inArray(Conversations.formId, formIds)]
+  if (raw?.status)
+    whereConds.push(eq(Conversations.status, raw.status))
+
+  const [totalRows] = await db
+    .select({ c: count() })
+    .from(Conversations)
+    .where(and(...whereConds))
+  const total = Number(totalRows?.c ?? 0)
+
+  const rows = await db
+    .select({
+      id: Conversations.id,
+      formId: Conversations.formId,
+      status: Conversations.status,
+      startedAt: Conversations.startedAt,
+      completedAt: Conversations.completedAt,
+      clientMetaJson: Conversations.clientMetaJson,
+    })
+    .from(Conversations)
+    .where(and(...whereConds))
+    .orderBy(desc(Conversations.startedAt))
+    .limit(pageSize + 1)
+    .offset(offset)
+
+  const hasMore = rows.length > pageSize
+  const visible = rows.slice(0, pageSize)
+
+  const convIds = visible.map(r => r.id)
+  let countsMap = new Map<string, number>()
+  if (convIds.length > 0) {
+    const counts = await db
+      .select({ conversationId: Turns.conversationId, c: count() })
+      .from(Turns)
+      .where(inArray(Turns.conversationId, convIds))
+      .groupBy(Turns.conversationId)
+    countsMap = new Map(counts.map(r => [r.conversationId, Number(r.c ?? 0)]))
+  }
+
+  const formById = new Map(ownedForms.map(f => [f.id, f]))
+
+  const items = visible.map((r) => {
+    const f = formById.get(r.formId)
+    const m = parseMeta(r.clientMetaJson)
+    const endReason = (() => {
+      const v = m?.end?.reason
+      return (v === 'hard_limit' || v === 'enough_info' || v === 'trolling') ? v : null
+    })()
+    return {
+      conversationId: r.id,
+      formId: r.formId,
+      formTitle: f?.title ?? 'Form',
+      provider: f?.aiConfigJson?.provider ?? null,
+      modelId: f?.aiConfigJson?.modelId ?? null,
+      status: r.status,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+      steps: countsMap.get(r.id) ?? 0,
+      endReason,
+    }
+  })
+
+  return { items, page, pageSize, hasMore, total }
+}, 'conv:listAllByOwner')
 
 export const getConversationTranscript = query(async (raw: { conversationId: string }) => {
   'use server'

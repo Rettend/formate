@@ -1,11 +1,10 @@
 import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction } from '@solidjs/router'
-import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { Button } from '~/components/ui/button'
-import { listRecentCompletions } from '~/server/analytics'
-import { deleteConversation, listFormConversations } from '~/server/conversations'
+import { deleteConversation, listFormConversations, listOwnerConversations } from '~/server/conversations'
 import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <ResponsesPage />, '/')
@@ -16,8 +15,21 @@ function ResponsesPage() {
   const selectedFormId = createMemo(() => ui.selectedFormId ?? null)
   const formId = createMemo(() => selectedFormId())
 
-  const conversations = createAsync(async () => (formId() ? listFormConversations({ formId: formId() as string, page: 1, pageSize: 25 }) : null))
-  const recent = createAsync(async () => (!formId() ? listRecentCompletions({ limit: 25 }) : null))
+  const [page, setPage] = createSignal(1)
+
+  const results = createAsync(async () => (formId()
+    ? listFormConversations({ formId: formId() as string, page: page(), pageSize: 25 })
+    : listOwnerConversations({ page: page(), pageSize: 25 })))
+
+  // Reset pagination when filter changes
+  createEffect(() => {
+    const id = formId()
+    setPage(1)
+    if (id)
+      void revalidate([listFormConversations.key])
+    else
+      void revalidate([listOwnerConversations.key])
+  })
   const doDelete = useAction(deleteConversation)
   const [confirmingId, setConfirmingId] = createSignal<string | null>(null)
   const [confirmArmedAtMs, setConfirmArmedAtMs] = createSignal<number>(0)
@@ -31,7 +43,7 @@ function ResponsesPage() {
       if (formId())
         await revalidate([listFormConversations.key])
       else
-        await revalidate([listRecentCompletions.key])
+        await revalidate([listOwnerConversations.key])
       setConfirmingId(null)
       clearTimeout(confirmTimer)
       return
@@ -57,109 +69,123 @@ function ResponsesPage() {
           </div>
         </div>
 
-        <Show when={formId()}>
-          <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
-            <div class="mb-2 flex items-center justify-between">
-              <h2 class="text-sm font-semibold">Conversations</h2>
-              <div class="text-xs text-muted-foreground">{(conversations.latest?.items?.length ?? 0)} shown</div>
+        <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-sm font-semibold">{formId() ? 'Conversations' : 'All responses'}</h2>
+            <div class="text-xs text-muted-foreground">
+              <span>Page {results.latest?.page ?? page()}</span>
+              <span class="mx-2 opacity-60">•</span>
+              <span>{(results.latest?.items?.length ?? 0)} / {results.latest?.total ?? 0}</span>
             </div>
-            <Show when={(conversations.latest?.items?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No responses yet.</p>}>
-              <div class="divide-y">
-                <For each={conversations.latest?.items ?? []}>
-                  {c => (
-                    <div class="flex items-center justify-between gap-3 py-3">
-                      <div class="min-w-0">
-                        <div class="flex items-center gap-2 text-sm">
-                          <span class="font-medium capitalize">{c.status}</span>
-                          <Show when={c.endReason}>
-                            <span class="opacity-60">•</span>
-                            <span class="text-xs text-muted-foreground">End: {c.endReason}</span>
-                          </Show>
-                        </div>
-                        <div class="mt-0.5 text-xs text-muted-foreground">
-                          <span>Steps: {c.steps}</span>
-                          <span class="mx-2 opacity-60">•</span>
-                          <Show when={c.provider && c.modelId}>
-                            <span class="text-xs text-muted-foreground">{c.provider} / {c.modelId}</span>
-                          </Show>
-                          <span class="mx-2 opacity-60">•</span>
-                          <Show when={c.completedAt} fallback={<span>Started {new Date(c.startedAt).toLocaleString()}</span>}>
-                            <span>Completed {new Date(c.completedAt).toLocaleString()}</span>
-                          </Show>
-                        </div>
+          </div>
+          <Show when={(results.latest?.items?.length ?? 0) > 0}>
+            <div class="my-3 flex items-center justify-between">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={(results.latest?.page ?? page()) <= 1}
+                onClick={() => {
+                  setPage(p => Math.max(1, p - 1))
+                  if (formId())
+                    void revalidate([listFormConversations.key])
+                  else
+                    void revalidate([listOwnerConversations.key])
+                }}
+              >
+                ← Prev
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!results.latest?.hasMore}
+                onClick={() => {
+                  setPage(p => p + 1)
+                  if (formId())
+                    void revalidate([listFormConversations.key])
+                  else
+                    void revalidate([listOwnerConversations.key])
+                }}
+              >
+                Next →
+              </Button>
+            </div>
+          </Show>
+          <Show when={(results.latest?.items?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No responses yet.</p>}>
+            <div class="divide-y">
+              <For each={results.latest?.items ?? []}>
+                {it => (
+                  <div class="flex items-center justify-between gap-3 py-3">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 text-sm">
+                        <Show when={!formId()} fallback={<span class="font-medium capitalize">{(it as any).status}</span>}>
+                          <span class="font-medium capitalize">{(it as any).formTitle}</span>
+                        </Show>
+                        <Show when={(it as any).endReason}>
+                          <span class="opacity-60">•</span>
+                          <span class="text-xs text-muted-foreground">End: {(it as any).endReason}</span>
+                        </Show>
                       </div>
-                      <div class="flex shrink-0 items-center gap-3">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="text-destructive/90 hover:bg-transparent hover:text-destructive"
-                          title={confirmingId() === c.id ? 'Click to confirm delete' : 'Delete'}
-                          aria-label={confirmingId() === c.id ? 'Confirm delete' : 'Delete'}
-                          onClick={() => { void handleDelete(c.id) }}
-                        >
-                          <span class={confirmingId() === c.id ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
-                        </Button>
-                        <A href={`/responses/${c.id}`} class="text-xs text-primary">View →</A>
+                      <div class="mt-0.5 text-xs text-muted-foreground">
+                        <span>Steps: {(it as any).steps}</span>
+                        <span class="mx-2 opacity-60">•</span>
+                        <Show when={(it as any).provider && (it as any).modelId}>
+                          <span class="text-xs text-muted-foreground">{(it as any).provider} / {(it as any).modelId}</span>
+                        </Show>
+                        <span class="mx-2 opacity-60">•</span>
+                        <Show when={(it as any).completedAt} fallback={<span>Started {new Date((it as any).startedAt!).toLocaleString()}</span>}>
+                          <span>Completed {new Date((it as any).completedAt!).toLocaleString()}</span>
+                        </Show>
                       </div>
                     </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-        </Show>
-
-        <Show when={!formId()}>
-          <div class="border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
-            <div class="mb-2 flex items-center justify-between">
-              <h2 class="text-sm font-semibold">Recent completions</h2>
-              <div class="text-xs text-muted-foreground">{(recent.latest?.items?.length ?? 0)} shown</div>
-            </div>
-            <Show when={(recent.latest?.items?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No responses yet.</p>}>
-              <div class="divide-y">
-                <For each={recent.latest?.items ?? []}>
-                  {it => (
-                    <div class="flex items-center justify-between gap-3 py-3">
-                      <div class="min-w-0">
-                        <div class="flex items-center gap-2 text-sm">
-                          <span class="font-medium capitalize">{it.formTitle}</span>
-                          <Show when={it.endReason}>
-                            <span class="opacity-60">•</span>
-                            <span class="text-xs text-muted-foreground">End: {it.endReason}</span>
-                          </Show>
-                        </div>
-                        <div class="mt-0.5 text-xs text-muted-foreground">
-                          <span>Steps: {it.steps}</span>
-                          <span class="mx-2 opacity-60">•</span>
-                          <Show when={it.provider && it.modelId}>
-                            <span class="text-xs text-muted-foreground">{it.provider} / {it.modelId}</span>
-                          </Show>
-                          <span class="mx-2 opacity-60">•</span>
-                          <Show when={it.completedAt} fallback={<span>Started {new Date(it.startedAt).toLocaleString()}</span>}>
-                            <span>Completed {new Date(it.completedAt).toLocaleString()}</span>
-                          </Show>
-                        </div>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-3">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="text-destructive/90 hover:bg-transparent hover:text-destructive"
-                          title={confirmingId() === it.conversationId ? 'Click to confirm delete' : 'Delete'}
-                          aria-label={confirmingId() === it.conversationId ? 'Confirm delete' : 'Delete'}
-                          onClick={() => { void handleDelete(it.conversationId) }}
-                        >
-                          <span class={confirmingId() === it.conversationId ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
-                        </Button>
-                        <A href={`/responses/${it.conversationId}`} class="text-xs text-primary">Open →</A>
-                      </div>
+                    <div class="flex shrink-0 items-center gap-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="text-destructive/90 hover:bg-transparent hover:text-destructive"
+                        title={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'Click to confirm delete' : 'Delete'}
+                        aria-label={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'Confirm delete' : 'Delete'}
+                        onClick={() => { void handleDelete(((it as any).id ?? (it as any).conversationId) as string) }}
+                      >
+                        <span class={confirmingId() === ((it as any).id ?? (it as any).conversationId) ? 'i-ph:check-bold size-4' : 'i-ph:trash-bold size-4'} />
+                      </Button>
+                      <A href={`/responses/${((it as any).id ?? (it as any).conversationId)}`} class="text-xs text-primary">{formId() ? 'View' : 'Open'} →</A>
                     </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-        </Show>
+                  </div>
+                )}
+              </For>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={(results.latest?.page ?? page()) <= 1}
+                onClick={() => {
+                  setPage(p => Math.max(1, p - 1))
+                  if (formId())
+                    void revalidate([listFormConversations.key])
+                  else
+                    void revalidate([listOwnerConversations.key])
+                }}
+              >
+                ← Prev
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!results.latest?.hasMore}
+                onClick={() => {
+                  setPage(p => p + 1)
+                  if (formId())
+                    void revalidate([listFormConversations.key])
+                  else
+                    void revalidate([listOwnerConversations.key])
+                }}
+              >
+                Next →
+              </Button>
+            </div>
+          </Show>
+        </div>
       </section>
     </AppShell>
   )

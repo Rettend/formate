@@ -1,5 +1,5 @@
 import { query } from '@solidjs/router'
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
 import { db } from './db'
@@ -26,7 +26,7 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
   const formId = raw?.formId ?? null
 
   const formsCountRows = await db
-    .select({ c: sql<number>`count(*)`.as('c') })
+    .select({ c: count() })
     .from(Forms)
     .where(eq(Forms.ownerUserId, userId))
   const totalForms = Number((formsCountRows[0] as any)?.c ?? 0)
@@ -40,14 +40,14 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
     return { totalForms, responses7d: 0, activeConversations: 0 }
 
   const activeRows = await db
-    .select({ c: sql<number>`count(*)`.as('c') })
+    .select({ c: count() })
     .from(Conversations)
     .where(and(inArray(Conversations.formId, formIds), eq(Conversations.status, 'active')))
   const activeConversations = Number((activeRows[0] as any)?.c ?? 0)
 
   const since = rangeToSince('7d')
   const respRows = await db
-    .select({ c: sql<number>`count(*)`.as('c') })
+    .select({ c: count() })
     .from(Conversations)
     .where(and(inArray(Conversations.formId, formIds), eq(Conversations.status, 'completed'), gte(Conversations.completedAt as any, since as any)))
   const responses7d = Number((respRows[0] as any)?.c ?? 0)
@@ -55,7 +55,7 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
   return { totalForms, responses7d, activeConversations }
 }, 'analytics:dashboardStats')
 
-export const listRecentCompletions = query(async (raw?: { limit?: number, formId?: string | null }) => {
+export const listRecentCompletions = query(async (raw?: { limit?: number, formId?: string | null, page?: number, pageSize?: number }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -63,7 +63,10 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
   if (!userId)
     throw new Error('Unauthorized')
 
+  const paged = typeof raw?.page === 'number' || typeof raw?.pageSize === 'number'
   const limit = Math.max(1, Math.min(50, Number(raw?.limit ?? 10)))
+  const page = Math.max(1, Number(raw?.page ?? 1))
+  const pageSize = Math.max(1, Math.min(100, Number(raw?.pageSize ?? 25)))
   const formId = raw?.formId ?? null
 
   // Restrict to owner forms
@@ -89,15 +92,16 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     .from(Conversations)
     .where(and(inArray(Conversations.formId, ownedIds), eq(Conversations.status, 'completed')))
     .orderBy(desc(Conversations.completedAt))
-    .limit(limit)
+    .limit(paged ? (pageSize + 1) : limit)
+    .offset(paged ? ((page - 1) * pageSize) : undefined as unknown as number)
 
   if (rows.length === 0)
-    return { items: [] as Array<any> }
+    return paged ? { items: [] as Array<any>, page, pageSize, hasMore: false } : { items: [] as Array<any> }
 
   const convIds = rows.map(r => r.id)
   // Count turns per conversation
   const turnCountsRows = await db
-    .select({ conversationId: Turns.conversationId, c: sql<number>`count(*)`.as('c') })
+    .select({ conversationId: Turns.conversationId, c: count() })
     .from(Turns)
     .where(inArray(Turns.conversationId, convIds))
     .groupBy(Turns.conversationId)
@@ -112,7 +116,9 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
   const userById = new Map(users.map(u => [u.id, u]))
   const inviteByJti = new Map(invites.map(i => [i.jti, i]))
 
-  const items = rows.map(r => ({
+  const trimmed = paged ? rows.slice(0, pageSize) : rows
+
+  const items = trimmed.map(r => ({
     conversationId: r.id,
     formId: r.formId,
     formTitle: (formById.get(r.formId) as any)?.title ?? 'Form',
@@ -136,7 +142,11 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     })(),
   }))
 
-  return { items }
+  if (!paged)
+    return { items }
+
+  const hasMore = rows.length > pageSize
+  return { items, page, pageSize, hasMore }
 }, 'analytics:recentCompletions')
 
 export const getCompletionTimeSeries = query(async (raw?: { range?: '7d' | '30d' | '90d', formId?: string | null }) => {
@@ -195,11 +205,11 @@ export const getFunnelStats = query(async (raw?: { range?: '7d' | '30d' | '90d',
     return { started: 0, completed: 0, completionRate: 0 }
 
   const startedRows = await db
-    .select({ c: sql<number>`count(*)`.as('c') })
+    .select({ c: count() })
     .from(Conversations)
     .where(and(inArray(Conversations.formId, ids), gte(Conversations.startedAt as any, since as any)))
   const completedRows = await db
-    .select({ c: sql<number>`count(*)`.as('c') })
+    .select({ c: count() })
     .from(Conversations)
     .where(and(inArray(Conversations.formId, ids), eq(Conversations.status, 'completed'), gte(Conversations.completedAt as any, since as any)))
 
@@ -235,7 +245,7 @@ export const getFormBreakdown = query(async (raw?: { range?: '7d' | '30d' | '90d
   const convIds = convs.map(c => c.id)
   const turnCountsRows = convIds.length > 0
     ? await db
-        .select({ conversationId: Turns.conversationId, c: sql<number>`count(*)`.as('c') })
+        .select({ conversationId: Turns.conversationId, c: count() })
         .from(Turns)
         .where(inArray(Turns.conversationId, convIds))
         .groupBy(Turns.conversationId)
