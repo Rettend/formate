@@ -92,7 +92,6 @@ export default function Respondent() {
     if (!convId)
       return { items: [] as Array<{ id: string, index: number, status: string, questionJson: any, answerJson?: any }>, remainingBack: null as number | null }
     const res = await listTurns({ conversationId: convId })
-    // If conversation was deleted server-side, clear local state and inform user
     if (res?.status === 'deleted') {
       const f = form()
       if (f) {
