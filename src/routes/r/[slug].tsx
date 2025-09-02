@@ -705,7 +705,8 @@ export default function Respondent() {
                                     <DialogHeader>
                                       <DialogTitle>Submit and finish?</DialogTitle>
                                       <DialogDescription>
-                                        This will mark the conversation as completed.<br />
+                                        This will mark the conversation as completed.
+                                        <br />
                                         You won't be able to answer more questions.
                                       </DialogDescription>
                                     </DialogHeader>
