@@ -150,7 +150,7 @@ export const listTurns = query(async (raw: { conversationId: string }) => {
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    return { items: [], remainingBack: null as number | null, status: 'deleted' as const }
   // authorize: either same user or same invite
   const { userId, inviteJti } = await getIdentityForForm(conv.formId)
   const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
@@ -626,10 +626,6 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
-  const existingNext = priorTurns.find((t: any) => t.index === indexValue)
-  if (existingNext)
-    return { kind: 'turn', turn: existingNext }
-
   const history = priorTurns
     .filter((t: any) => t.index <= indexValue - 1)
     .map((t: any) => ({
@@ -674,44 +670,13 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  // DB-level re-check to avoid racing between the prior read and insert
-  {
-    const [existingNow] = await tx
-      .select()
-      .from(Turns)
-      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-      .limit(1)
-    if (existingNow)
-      return { kind: 'turn', turn: existingNow }
-  }
-
-  let lastError: any | undefined
-  try {
-    await tx.insert(Turns).values({
-      conversationId,
-      index: indexValue,
-      questionJson: question as any,
-      status: 'awaiting_answer',
-    })
-  }
-  catch (e: any) {
-    lastError = e
-  }
-
-  // Select-after to recover from any insert race or database-level ignore
-  {
-    const [row] = await tx
-      .select()
-      .from(Turns)
-      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-      .limit(1)
-    if (row)
-      return { kind: 'turn', turn: row }
-  }
-
-  if (lastError)
-    throw lastError
-  throw new Error('Failed to create next turn')
+  const [created] = await tx.insert(Turns).values({
+    conversationId,
+    index: indexValue,
+    questionJson: question as any,
+    status: 'awaiting_answer',
+  }).returning()
+  return { kind: 'turn', turn: created }
 }
 
 // Owner admin queries

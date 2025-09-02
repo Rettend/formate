@@ -92,9 +92,20 @@ export default function Respondent() {
     if (!convId)
       return { items: [] as Array<{ id: string, index: number, status: string, questionJson: any, answerJson?: any }>, remainingBack: null as number | null }
     const res = await listTurns({ conversationId: convId })
-    if (!isOwner() && typeof (res as any)?.remainingBack === 'number') {
+    // If conversation was deleted server-side, clear local state and inform user
+    if (res?.status === 'deleted') {
+      const f = form()
+      if (f) {
+        const key = userId()
+        initProgress(setLocal, f.id, key)
+        setLocal('byForm', f.id, 'byUser', key, 'conversationId', undefined)
+      }
+      queueMicrotask(() => toast.message('This session ended. You can start again.'))
+      return { items: [], remainingBack: null as number | null, status: 'deleted' as const }
+    }
+    if (!isOwner() && typeof res?.remainingBack === 'number') {
       setSession('byConversation', convId, prev => prev ?? ({}))
-      setSession('byConversation', convId, 'backRemaining', (res as any).remainingBack)
+      setSession('byConversation', convId, 'backRemaining', res.remainingBack)
     }
     return res
   })
