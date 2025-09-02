@@ -212,10 +212,11 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
       throw new Error('Turn already answered')
 
     const answerJson = { value, providedAt: new Date().toISOString() }
-    await tx
+    const updatedRows = await tx
       .update(Turns)
       .set({ answerJson, status: 'answered', answeredAt: new Date() })
-      .where(eq(Turns.id, turnId))
+      .where(and(eq(Turns.id, turnId), eq(Turns.status, 'awaiting_answer')))
+      .returning()
 
     // Determine next step with stopping criteria
     const answeredIndex = turn.index
@@ -227,6 +228,18 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
       throw new Error('Form not found')
 
     const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
+
+    // If someone else already answered in parallel, prefer returning any existing next turn without regenerating
+    if (updatedRows.length === 0) {
+      const [existingNext] = await tx
+        .select()
+        .from(Turns)
+        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
+        .limit(1)
+      if (existingNext)
+        return { nextTurn: existingNext }
+      // else continue and let follow-up generation handle on-conflict safely
+    }
 
     // If asking one more would exceed hard limit, complete now
     if (shouldHardStop(nextIndex)) {
@@ -240,6 +253,17 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
         .where(eq(Conversations.id, conversationId))
         .returning()
       return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
+    }
+
+    // Before asking the LLM, check if a next turn is already present (from a parallel worker)
+    {
+      const [existingNext] = await tx
+        .select()
+        .from(Turns)
+        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
+        .limit(1)
+      if (existingNext)
+        return { nextTurn: existingNext }
     }
 
     // Otherwise, ask the LLM for the next question or end signal
@@ -626,6 +650,17 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
+  // Idempotency: if a turn at indexValue already exists, return it without regenerating
+  {
+    const [existingAtIndex] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+      .limit(1)
+    if (existingAtIndex)
+      return { kind: 'turn', turn: existingAtIndex }
+  }
+
   const history = priorTurns
     .filter((t: any) => t.index <= indexValue - 1)
     .map((t: any) => ({
@@ -670,13 +705,31 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  const [created] = await tx.insert(Turns).values({
-    conversationId,
-    index: indexValue,
-    questionJson: question as any,
-    status: 'awaiting_answer',
-  }).returning()
-  return { kind: 'turn', turn: created }
+  const inserted = await tx
+    .insert(Turns)
+    .values({
+      conversationId,
+      index: indexValue,
+      questionJson: question as any,
+      status: 'awaiting_answer',
+    })
+    .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
+    .returning()
+
+  if (inserted.length > 0)
+    return { kind: 'turn', turn: inserted[0] }
+
+  // If another worker inserted concurrently, fetch and return it
+  const [existing] = await tx
+    .select()
+    .from(Turns)
+    .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+    .limit(1)
+  if (existing)
+    return { kind: 'turn', turn: existing }
+
+  // As a last resort, signal end to avoid looping; caller will re-check status
+  return { kind: 'end', reason: 'enough_info' as any }
 }
 
 // Owner admin queries
