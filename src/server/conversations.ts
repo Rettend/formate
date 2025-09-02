@@ -674,31 +674,44 @@ async function createFollowUpTurnOrEndTx(tx: any, conversationId: string, indexV
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
+  // DB-level re-check to avoid racing between the prior read and insert
+  {
+    const [existingNow] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+      .limit(1)
+    if (existingNow)
+      return { kind: 'turn', turn: existingNow }
+  }
+
+  let lastError: any | undefined
   try {
-    const [created] = await tx.insert(Turns).values({
+    await tx.insert(Turns).values({
       conversationId,
       index: indexValue,
       questionJson: question as any,
       status: 'awaiting_answer',
-    }).returning()
-    return { kind: 'turn', turn: created }
+    })
   }
   catch (e: any) {
-    const msg = String(e?.message || e)
-    console.log('e', e)
-    console.log('msg', msg)
-    console.log('code', e?.code)
-    if (msg.includes('UNIQUE constraint failed')) {
-      const [existing] = await tx
-        .select()
-        .from(Turns)
-        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-        .limit(1)
-      if (existing)
-        return { kind: 'turn', turn: existing }
-    }
-    throw e
+    lastError = e
   }
+
+  // Select-after to recover from any insert race or database-level ignore
+  {
+    const [row] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+      .limit(1)
+    if (row)
+      return { kind: 'turn', turn: row }
+  }
+
+  if (lastError)
+    throw lastError
+  throw new Error('Failed to create next turn')
 }
 
 // Owner admin queries

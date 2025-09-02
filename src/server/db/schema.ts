@@ -108,6 +108,7 @@ export const Turns = sqliteTable('turns', {
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   answeredAt: integer({ mode: 'timestamp' }),
 }, t => [
+  uniqueIndex('turns_conv_index_unique').on(t.conversationId, t.index),
   index('turns_conversation_index_idx').on(t.conversationId, t.index),
 ])
 
