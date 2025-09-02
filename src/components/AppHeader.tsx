@@ -1,4 +1,4 @@
-import { A, createAsync } from '@solidjs/router'
+import { A, createAsync, useLocation, useNavigate } from '@solidjs/router'
 import { createMemo, For, Show } from 'solid-js'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
@@ -12,6 +12,8 @@ export function AppHeader() {
   const { ui, setUI, actions } = useUIStore()
   const auth = useAuth()
   const redirectTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined
+  const nav = useNavigate()
+  const location = useLocation()
 
   const forms = createAsync(async () => {
     if (!auth.session().user)
@@ -47,6 +49,12 @@ export function AppHeader() {
                       <DropdownMenuItem onClick={() => {
                         const id = opt.id ?? ''
                         actions.setSelectedForm(id === '' ? null : id)
+                        if (location.pathname === '/forms' || location.pathname.startsWith('/forms/')) {
+                          if (id === '')
+                            nav('/forms')
+                          else
+                            nav(`/forms/${id}`)
+                        }
                       }}
                       >
                         <div class="flex items-center gap-2">
@@ -73,6 +81,12 @@ export function AppHeader() {
                 onChange={(opt) => {
                   const id = opt?.id ?? ''
                   actions.setSelectedForm(id === '' ? null : id)
+                  if (location.pathname === '/forms' || location.pathname.startsWith('/forms/')) {
+                    if (id === '')
+                      nav('/forms')
+                    else
+                      nav(`/forms/${id}`)
+                  }
                 }}
                 placeholder="All forms"
                 selectionBehavior="toggle"
