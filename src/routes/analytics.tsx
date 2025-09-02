@@ -11,7 +11,7 @@ import { useUIStore } from '~/stores/ui'
 export default Protected(() => <Analytics />, '/')
 
 function Analytics() {
-  const { ui } = useUIStore()
+  const { ui, actions } = useUIStore()
   const [range, setRange] = createSignal<'7d' | '30d' | '90d'>('7d')
   const formId = createMemo(() => ui.selectedFormId ?? null)
   const series = createAsync(() => getCompletionTimeSeries({ range: range(), formId: formId() }))
@@ -89,7 +89,16 @@ function Analytics() {
                         <div class="mt-0.5 text-xs text-muted-foreground">{it.completed} completed · {it.completionRate}% · avg {it.avgSteps} steps</div>
                       </div>
                       <div class="shrink-0">
-                        <A class="text-xs text-primary" href={`/responses?formId=${it.formId}`}>Responses →</A>
+                        <A
+                          class="text-xs text-primary"
+                          href={`/responses?formId=${it.formId}`}
+                          onMouseUp={(e) => {
+                            if (e.button === 0 || e.button === 1)
+                              actions.setSelectedForm(it.formId)
+                          }}
+                        >
+                          Responses →
+                        </A>
                       </div>
                     </div>
                   )}
