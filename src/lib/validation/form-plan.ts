@@ -70,6 +70,9 @@ export const formPlanSchema = z.object({
     endReasons: z.array(z.enum(['enough_info', 'trolling'])).min(0).max(2).default(['enough_info', 'trolling']),
     allowRespondentComplete: z.boolean().default(false),
   }).optional(),
+  summaries: z.object({
+    autoResponse: z.boolean().optional(),
+  }).optional(),
 })
 
 export type FormPlan = z.infer<typeof formPlanSchema>

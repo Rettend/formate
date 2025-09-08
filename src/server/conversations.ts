@@ -33,8 +33,8 @@ async function getIdentityForForm(formId?: string): Promise<Identity> {
           if (val.startsWith('{')) {
             try {
               const parsed = JSON.parse(val)
-              if (parsed && typeof parsed === 'object' && typeof (parsed as any).jti === 'string')
-                inviteJti = (parsed as any).jti
+              if (parsed && typeof parsed === 'object' && typeof parsed.jti === 'string')
+                inviteJti = parsed.jti
             }
             catch {}
           }
@@ -43,7 +43,7 @@ async function getIdentityForForm(formId?: string): Promise<Identity> {
             if (val === cookieName || val.startsWith('form_invite_')) {
               // Clear invalid cookie and ignore
               try {
-                setCookie(cookieName, '', { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', expires: new Date(0) } as any)
+                setCookie(cookieName, '', { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', expires: new Date(0) })
               }
               catch {}
               inviteJti = undefined
@@ -111,8 +111,8 @@ export const getOrCreateConversation = action(async (raw: { formId: string }) =>
 
   const [created] = await db.insert(Conversations).values({
     formId,
-    respondentUserId: inviteJti ? (null as any) : (userId ?? null as any),
-    inviteJti: inviteJti ?? null as any,
+    respondentUserId: inviteJti ? null : userId ?? null,
+    inviteJti: inviteJti ?? null,
     status: 'active',
   }).returning().catch(async (e: any) => {
     const msg = String(e?.message || e)
@@ -243,12 +243,12 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
         status: 'completed',
         completedAt: new Date(),
         clientMetaJson: mergeEndMeta(phase1.conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
-      } as any)
+      })
       .where(and(eq(Conversations.id, conversationId), eq(Conversations.status, 'active')))
       .returning()
     if (updated) {
       try {
-        const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+        const auto = Boolean((form?.settingsJson)?.summaries?.autoResponse ?? false)
         if (auto)
           await generateAndSaveConversationSummary(conversationId)
       }
@@ -276,17 +276,17 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
     .orderBy(asc(Turns.index))
 
   const history = priorTurns
-    .filter((t: any) => t.index <= nextIndex - 1)
-    .map((t: any) => ({
+    .filter(t => t.index <= nextIndex - 1)
+    .map(t => ({
       index: t.index,
       question: t.questionJson ? { label: t.questionJson.label, type: t.questionJson.type } : undefined,
-      answer: t.answerJson ? (t.answerJson as any).value : undefined,
+      answer: t.answerJson ? t.answerJson.value : undefined,
     }))
 
-  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
-  const modelId = (form as any).aiConfigJson?.modelId as string | undefined
-  const prompt = (form as any).aiConfigJson?.prompt as string | undefined
-  const stopping = getStopping((form as any).settingsJson)
+  const provider = form.aiConfigJson?.provider as Provider | undefined
+  const modelId = form.aiConfigJson?.modelId as string | undefined
+  const prompt = form.aiConfigJson?.prompt as string | undefined
+  const stopping = getStopping(form.settingsJson)
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
 
@@ -312,12 +312,12 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
         status: 'completed',
         completedAt: new Date(),
         clientMetaJson: mergeEndMeta(phase1.conv.clientMetaJson, { reason: follow.reason, atTurn: answeredIndex, modelId: follow.modelId }),
-      } as any)
+      })
       .where(and(eq(Conversations.id, conversationId), eq(Conversations.status, 'active')))
       .returning()
     if (updated) {
       try {
-        const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+        const auto = Boolean(form?.settingsJson?.summaries?.autoResponse ?? false)
         if (auto)
           await generateAndSaveConversationSummary(conversationId)
       }
@@ -357,7 +357,7 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
       .limit(1)
     if (after)
       return after
-    return undefined as any
+    return undefined
   })
   if (inserted)
     return { nextTurn: inserted }
@@ -385,8 +385,8 @@ export const completeConversation = action(async (raw: { conversationId: string 
     .returning()
 
   try {
-    const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
-    const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+    const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+    const auto = Boolean(form?.settingsJson?.summaries?.autoResponse ?? false)
     if (auto)
       await generateAndSaveConversationSummary(conversationId)
   }
@@ -432,7 +432,7 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
       throw new Error('Previous question not found')
 
     // Capture previous answer value before clearing
-    const prevAnswerValue = (prev as any)?.answerJson?.value
+    const prevAnswerValue = prev?.answerJson?.value
 
     // Delete current active question (it is the latest turn by design)
     await db
@@ -442,14 +442,14 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     // Reopen previous: clear answer and set awaiting
     const [updatedPrev] = await db
       .update(Turns)
-      .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+      .set({ status: 'awaiting_answer', answerJson: null, answeredAt: null })
       .where(eq(Turns.id, prev.id))
       .returning()
 
     // Ensure conversation is active
     await db
       .update(Conversations)
-      .set({ status: 'active', completedAt: null as any })
+      .set({ status: 'active', completedAt: null })
       .where(eq(Conversations.id, conversationId))
 
     return { ok: true, reopenedTurnId: updatedPrev?.id, previousAnswer: prevAnswerValue }
@@ -460,17 +460,17 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
     throw new Error('No questions to rewind')
 
   const last = turns[turns.length - 1]
-  const lastAnswerValue = (last as any)?.answerJson?.value
+  const lastAnswerValue = last?.answerJson?.value
 
   const [updatedLast] = await db
     .update(Turns)
-    .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+    .set({ status: 'awaiting_answer', answerJson: null, answeredAt: null })
     .where(eq(Turns.id, last.id))
     .returning()
 
   await db
     .update(Conversations)
-    .set({ status: 'active', completedAt: null as any })
+    .set({ status: 'active', completedAt: null })
     .where(eq(Conversations.id, conversationId))
 
   return { ok: true, reopenedTurnId: updatedLast?.id, previousAnswer: lastAnswerValue }
@@ -527,19 +527,19 @@ export const respondentRewind = action(async (raw: { conversationId: string }) =
     if (!prev)
       throw new Error('Previous question not found')
 
-    const prevAnswerValue = (prev as any)?.answerJson?.value
+    const prevAnswerValue = prev?.answerJson?.value
 
     await db.delete(Turns).where(eq(Turns.id, active.id))
     const [updatedPrev] = await db
       .update(Turns)
-      .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+      .set({ status: 'awaiting_answer', answerJson: null, answeredAt: null })
       .where(eq(Turns.id, prev.id))
       .returning()
 
     // Track usage
     await db
       .update(Conversations)
-      .set({ status: 'active', completedAt: null as any, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) as any })
+      .set({ status: 'active', completedAt: null, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) })
       .where(eq(Conversations.id, conversationId))
 
     return { ok: true, reopenedTurnId: updatedPrev?.id, remaining: Math.max(0, limit - (used + 1)), previousAnswer: prevAnswerValue }
@@ -549,16 +549,16 @@ export const respondentRewind = action(async (raw: { conversationId: string }) =
     throw new Error('No questions to rewind')
 
   const last = answered[answered.length - 1]
-  const lastAnswerValue = (last as any)?.answerJson?.value
+  const lastAnswerValue = last?.answerJson?.value
   const [updatedLast] = await db
     .update(Turns)
-    .set({ status: 'awaiting_answer', answerJson: null as any, answeredAt: null as any })
+    .set({ status: 'awaiting_answer', answerJson: null, answeredAt: null })
     .where(eq(Turns.id, last.id))
     .returning()
 
   await db
     .update(Conversations)
-    .set({ status: 'active', completedAt: null as any, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) as any })
+    .set({ status: 'active', completedAt: null, clientMetaJson: setRespondentBackUsed(conv.clientMetaJson, used + 1) })
     .where(eq(Conversations.id, conversationId))
 
   return { ok: true, reopenedTurnId: updatedLast?.id, remaining: Math.max(0, limit - (used + 1)), previousAnswer: lastAnswerValue }
@@ -590,7 +590,7 @@ export const resetConversation = action(async (raw: { conversationId: string }) 
   // Mark conversation active and clear completion and end metadata
   await db
     .update(Conversations)
-    .set({ status: 'active', completedAt: null as any, clientMetaJson: null as any })
+    .set({ status: 'active', completedAt: null, clientMetaJson: null })
     .where(eq(Conversations.id, conversationId))
 
   // Recreate first turn based on form seed
@@ -618,10 +618,10 @@ export const deleteConversation = action(async (raw: { conversationId: string })
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     return { ok: true }
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
     throw new Error('Form not found')
-  if ((form as any).ownerUserId !== userId)
+  if (form.ownerUserId !== userId)
     throw new Error('Forbidden')
 
   await db.delete(Conversations).where(eq(Conversations.id, conversationId))
@@ -642,14 +642,14 @@ async function ensureFirstTurn(conversationId: string, formId: string) {
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
     throw new Error('Form not found')
-  const seed = (form as any).seedQuestionJson
+  const seed = form.seedQuestionJson
   if (!seed)
     throw new Error('Missing seed question')
 
   await db.insert(Turns).values({
     conversationId,
     index: 0,
-    questionJson: seed as any,
+    questionJson: seed,
     status: 'awaiting_answer',
   })
 }
@@ -683,7 +683,7 @@ function mergeEndMeta(prev: any, meta: { reason: EndReason, atTurn: number, mode
 }
 
 function getRespondentBackLimit(form: any): number {
-  const lim = Number((form as any)?.settingsJson?.access?.respondentBackLimit ?? 0)
+  const lim = Number(form?.settingsJson?.access?.respondentBackLimit ?? 0)
   if (Number.isFinite(lim))
     return Math.max(0, Math.min(10, Math.trunc(lim)))
   return 0
@@ -691,7 +691,7 @@ function getRespondentBackLimit(form: any): number {
 
 function getRespondentBackUsedCount(meta: any): number {
   const obj = parseMeta(meta)
-  const v = (obj as any)?.respondentBack?.used
+  const v = obj?.respondentBack?.used
   const n = Number(v)
   if (Number.isFinite(n))
     return Math.max(0, Math.trunc(n))
@@ -717,8 +717,6 @@ function parseMeta(meta: any): any {
   }
   return (meta && typeof meta === 'object') ? meta : {}
 }
-
-// (createFollowUpTurnOrEndTx removed; logic inlined into answerQuestion)
 
 // Owner admin queries
 const listFormConversationsSchema = z.object({
@@ -749,7 +747,7 @@ export const listFormConversations = query(async (raw: { formId: string, status?
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 25))
   const offset = (page - 1) * pageSize
 
-  const whereConds: any[] = [eq(Conversations.formId, input.formId)]
+  const whereConds = [eq(Conversations.formId, input.formId)]
   if (input.status)
     whereConds.push(eq(Conversations.status, input.status))
 
@@ -907,10 +905,10 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
     throw new Error('Form not found')
-  if ((form as any).ownerUserId !== userId)
+  if (form.ownerUserId !== userId)
     throw new Error('Forbidden')
 
   const turns = await db
@@ -922,20 +920,20 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
   const [summary] = await db
     .select()
     .from(Summaries)
-    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .where(and(eq(Summaries.kind, 'response'), eq(Summaries.conversationId, conversationId)))
     .limit(1)
 
   return {
     conversation: {
-      id: (conv as any).id,
-      formId: (conv as any).formId,
-      status: (conv as any).status,
-      startedAt: (conv as any).startedAt,
-      completedAt: (conv as any).completedAt,
-      summaryBullets: (summary as any)?.bulletsJson ?? null,
+      id: conv.id,
+      formId: conv.formId,
+      status: conv.status,
+      startedAt: conv.startedAt,
+      completedAt: conv.completedAt,
+      summaryBullets: summary?.bulletsJson ?? null,
       endReason: (() => {
-        const m = parseMeta((conv as any).clientMetaJson)
-        const r = (m as any)?.end?.reason
+        const m = parseMeta(conv.clientMetaJson)
+        const r = m?.end?.reason
         return (r === 'hard_limit' || r === 'enough_info' || r === 'trolling') ? r : null
       })(),
     },
@@ -955,26 +953,26 @@ export const generateConversationSummary = action(async (raw: { conversationId: 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
     throw new Error('Form not found')
-  if ((form as any).ownerUserId !== userId)
+  if (form.ownerUserId !== userId)
     throw new Error('Forbidden')
 
   await generateAndSaveConversationSummary(conversationId)
   const [summary] = await db
     .select()
     .from(Summaries)
-    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .where(and(eq(Summaries.kind, 'response'), eq(Summaries.conversationId, conversationId)))
     .limit(1)
-  return { summaryBullets: (summary as any)?.bulletsJson ?? null }
+  return { summaryBullets: summary?.bulletsJson ?? null }
 }, 'conv:generateSummary')
 
 async function generateAndSaveConversationSummary(conversationId: string) {
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Error('Conversation not found')
-  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
     throw new Error('Form not found')
   const priorTurns = await db
@@ -983,21 +981,21 @@ async function generateAndSaveConversationSummary(conversationId: string) {
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
-  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
-  const modelId = (form as any).aiConfigJson?.modelId as string | undefined
-  const prompt = (form as any).aiConfigJson?.prompt as string | undefined
+  const provider = form.aiConfigJson?.provider as Provider | undefined
+  const modelId = form.aiConfigJson?.modelId as string | undefined
+  const prompt = form.aiConfigJson?.prompt as string | undefined
   if (!provider || !modelId || !prompt)
     throw new Error('AI not configured for this form')
-  await assertProviderAllowedForUser(provider, (form as any).ownerUserId)
+  await assertProviderAllowedForUser(provider, form.ownerUserId)
 
-  const history = priorTurns.map((t: any) => ({ index: t.index, question: t.questionJson ? { label: t.questionJson.label } : undefined, answer: t.answerJson ? (t.answerJson as any).value : undefined }))
+  const history = priorTurns.map((t: any) => ({ index: t.index, question: t.questionJson ? { label: t.questionJson.label } : undefined, answer: t.answerJson ? t.answerJson.value : undefined }))
   const { generateResponseSummary } = await import('~/lib/ai/summary')
   const bullets = await generateResponseSummary({
     provider,
     modelId,
-    apiKeyEnc: (form as any).aiProviderKeyEnc,
+    apiKeyEnc: form.aiProviderKeyEnc,
     formGoalPrompt: prompt,
-    planSummary: (form as any).settingsJson?.summary ?? undefined,
+    planSummary: form.settingsJson?.summary ?? undefined,
     history,
   })
 
@@ -1005,23 +1003,23 @@ async function generateAndSaveConversationSummary(conversationId: string) {
   const existing = await db
     .select()
     .from(Summaries)
-    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .where(and(eq(Summaries.kind, 'response'), eq(Summaries.conversationId, conversationId)))
     .limit(1)
   if (existing.length > 0) {
     await db
       .update(Summaries)
-      .set({ bulletsJson: bullets as any, updatedAt: new Date() })
-      .where(eq(Summaries.id, (existing[0] as any).id))
+      .set({ bulletsJson: bullets, updatedAt: new Date() })
+      .where(eq(Summaries.id, existing[0].id))
   }
   else {
     await db.insert(Summaries).values({
-      kind: 'response' as any,
-      formId: (form as any).id,
+      kind: 'response',
+      formId: form.id,
       conversationId,
-      bulletsJson: bullets as any,
-      provider: (form as any).aiConfigJson?.provider ?? null as any,
-      modelId: (form as any).aiConfigJson?.modelId ?? null as any,
-      createdByUserId: (form as any).ownerUserId,
+      bulletsJson: bullets,
+      provider: form.aiConfigJson?.provider ?? null,
+      modelId: form.aiConfigJson?.modelId ?? null,
+      createdByUserId: form.ownerUserId,
     })
   }
 }
