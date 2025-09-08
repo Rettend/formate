@@ -753,14 +753,14 @@ async function createFollowUpTurnOrEndTx(
   // 3. Emit structured debug logs when DEBUG_TURNS is set so we can inspect
   try {
     if (inserted.length > 0) {
-      console.warn('[turns] inserted-followup', { conversationId, indexValue, id: inserted[0].id })
+      console.log('[turns] inserted-followup', { conversationId, indexValue, id: inserted[0].id })
       return { kind: 'turn', turn: inserted[0] }
     }
   }
   catch (err: any) {
     // Swallow after logging; we'll retry via fallback select below
     try {
-      console.error('[turns] insert error (will fallback)', {
+      console.log('[turns] insert error (will fallback)', {
         conversationId,
         indexValue,
         message: err?.message,
@@ -777,7 +777,7 @@ async function createFollowUpTurnOrEndTx(
       .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
       .limit(1)
     if (existingAfter) {
-      console.warn('[turns] fallback-existing', { conversationId, indexValue, id: (existingAfter as any).id })
+      console.log('[turns] fallback-existing', { conversationId, indexValue, id: (existingAfter as any).id })
       return { kind: 'turn', turn: existingAfter }
     }
   }
@@ -791,7 +791,7 @@ async function createFollowUpTurnOrEndTx(
         schemaCols = await tx.execute?.('pragma table_info(\'turns\')')
       }
       catch {}
-      console.error('[turns] fallback-select error', {
+      console.log('[turns] fallback-select error', {
         conversationId,
         indexValue,
         message: err?.message,
