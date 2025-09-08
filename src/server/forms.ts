@@ -340,9 +340,10 @@ const savePromptSchema = z.object({
   prompt: z.string().min(1).max(4000),
   provider: z.string(),
   modelId: z.string(),
+  temperature: z.coerce.number().min(0).max(2).optional(),
 })
 
-export const saveFormPrompt = action(async (raw: { formId: string, prompt: string, provider: string, modelId: string }) => {
+export const saveFormPrompt = action(async (raw: { formId: string, prompt: string, provider: string, modelId: string, temperature?: number }) => {
   'use server'
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
@@ -354,7 +355,7 @@ export const saveFormPrompt = action(async (raw: { formId: string, prompt: strin
 
   const [updated] = await db
     .update(Forms)
-    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId }, updatedAt: new Date() })
+    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature }, updatedAt: new Date() })
     .where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
     .returning()
   if (!updated)
@@ -457,7 +458,7 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
 
   await db
     .update(Forms)
-    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId }, settingsJson: safePlan, seedQuestionJson: safePlan.seed, updatedAt: new Date() })
+    .set({ aiConfigJson: { prompt: input.prompt, provider: input.provider, modelId: input.modelId, temperature: input.temperature }, settingsJson: safePlan, seedQuestionJson: safePlan.seed, updatedAt: new Date() })
     .where(eq(Forms.id, input.formId))
   return { plan: safePlan }
 }, 'forms:planWithAI')

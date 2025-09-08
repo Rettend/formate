@@ -27,7 +27,11 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
   const [llmProvider, setLlmProvider] = createSignal<Provider | null>(untrack(() => props.form.aiConfigJson?.provider as Provider) ?? null)
   const [model, setModel] = createSignal<string | null>(untrack(() => props.form.aiConfigJson?.modelId) ?? null)
   const [prompt, setPrompt] = createSignal<string>(untrack(() => props.form.aiConfigJson?.prompt) ?? '')
-  const [temperature, setTemperature] = createSignal<number>(0.5)
+  const [temperature, setTemperature] = createSignal<number>(untrack(() => (
+    typeof props.form.aiConfigJson?.temperature === 'number'
+      ? props.form.aiConfigJson!.temperature!
+      : 0.5
+  )))
 
   const currentModels = createMemo<ModelConfigObject[]>(() => (llmProvider() ? (models[llmProvider()!]) : []) ?? [])
   const selectedModelObject = createMemo<ModelConfigObject | null>(() => currentModels().find(m => m.value === model()!) || null)
@@ -59,10 +63,12 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
   const serverPrompt = createMemo<string>(() => props.form.aiConfigJson?.prompt ?? '')
   const canPlan = createMemo(() => !!llmProvider() && !!model() && prompt().trim().length > 0)
   const canTest = canPlan
+  const serverTemperature = createMemo<number>(() => untrack(() => (typeof props.form.aiConfigJson?.temperature === 'number' ? props.form.aiConfigJson!.temperature! : 0.5)))
   const hasChanges = createMemo(() => (
     (llmProvider() ?? null) !== (serverProvider() ?? null)
     || (model() ?? null) !== (serverModel() ?? null)
     || (prompt().trim() ?? '') !== (serverPrompt() ?? '')
+    || (Number(temperature()) || 0) !== (Number(serverTemperature()) || 0)
   ))
 
   const saveIfChanged = async () => {
@@ -76,7 +82,7 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
     try {
       setSaving(true)
       props.onSavingChange?.(true)
-      const res = await doSaveConfig({ formId: props.form.id, prompt: pr, provider, modelId })
+      const res = await doSaveConfig({ formId: props.form.id, prompt: pr, provider, modelId, temperature: Number(temperature()) })
       if (res?.ok)
         await revalidate([getForm.key])
     }
@@ -347,7 +353,17 @@ export function LLMBuilder(props: { form: Form, onSavingChange?: (saving: boolea
 
             <div class="flex flex-col gap-2">
               <Label>Temperature</Label>
-              <NumberField class="w-full" value={temperature()} onChange={val => setTemperature(Number(val))} minValue={0} maxValue={2} step={0.1}>
+              <NumberField
+                class="w-full"
+                value={temperature()}
+                onChange={(val) => {
+                  setTemperature(Number(val))
+                }}
+                onCommit={() => { void saveIfChanged() }}
+                minValue={0}
+                maxValue={2}
+                step={0.1}
+              >
                 <NumberFieldGroup>
                   <NumberFieldInput aria-label="Model temperature" />
                   <NumberFieldDecrementTrigger />

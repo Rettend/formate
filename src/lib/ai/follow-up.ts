@@ -50,7 +50,6 @@ export async function generateFollowUpObject(options: GenerateFollowUpOptions): 
       apiKey,
       mode,
     })
-    console.log('REQUEST:', resp.request.body)
 
     return isFormateProvider ? resp.object.output : resp.object
   }

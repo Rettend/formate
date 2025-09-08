@@ -6,7 +6,28 @@ import { Show, splitProps } from 'solid-js'
 
 import { cn } from '~/utils'
 
-const NumberField = NumberFieldPrimitive.Root
+type NumberFieldRootProps<T extends ValidComponent = 'div'> = NumberFieldPrimitive.NumberFieldRootProps<T> & {
+  onCommit?: () => void
+}
+
+function NumberField<T extends ValidComponent = 'div'>(props: PolymorphicProps<T, NumberFieldRootProps<T>>) {
+  const [local, others] = splitProps(props as NumberFieldRootProps, ['onCommit'])
+  let ref: HTMLElement | undefined
+  const handleFocusOut: JSX.EventHandlerUnion<HTMLElement, FocusEvent> = (e) => {
+    const next = e.relatedTarget as Node | null
+    if (!ref)
+      return
+    if (!next || !ref.contains(next))
+      local.onCommit?.()
+  }
+  return (
+    <NumberFieldPrimitive.Root
+      ref={ref}
+      onFocusOut={handleFocusOut}
+      {...others}
+    />
+  )
+}
 
 const NumberFieldGroup: Component<ComponentProps<'div'>> = (props) => {
   const [local, others] = splitProps(props, ['class'])

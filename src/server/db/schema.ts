@@ -44,7 +44,7 @@ export const Forms = sqliteTable('forms', {
   ownerUserId: text().notNull().references(() => Users.id, { onDelete: 'cascade' }),
   title: text().notNull(),
   slug: text(),
-  aiConfigJson: text({ mode: 'json' }).$type<{ prompt: string, provider: string, modelId: string }>(),
+  aiConfigJson: text({ mode: 'json' }).$type<{ prompt: string, provider: string, modelId: string, temperature?: number }>(),
   aiProviderKeyEnc: text(),
   seedQuestionJson: text({ mode: 'json' }).$type<FormField>(),
   settingsJson: text({ mode: 'json' }).$type<FormPlan>(),
