@@ -157,10 +157,16 @@ function Transcript() {
           <div class="mb-4 text-xs text-muted-foreground">
             <span>Status: {data()?.conversation?.status}</span>
             <span class="mx-2 opacity-60">•</span>
-            <span>Started {new Date(data()?.conversation?.startedAt).toLocaleString()}</span>
+            <span>Started {(() => {
+              const d = data()?.conversation?.startedAt
+              return d ? new Date(d).toLocaleString() : '—'
+            })()}</span>
             <Show when={data()?.conversation?.completedAt}>
               <span class="mx-2 opacity-60">•</span>
-              <span>Completed {new Date(data()?.conversation?.completedAt).toLocaleString()}</span>
+              <span>Completed {(() => {
+                const d = data()?.conversation?.completedAt
+                return d ? new Date(d).toLocaleString() : '—'
+              })()}</span>
               <span class="mx-2 opacity-60">•</span>
               <span>Duration {formatDuration(data()?.conversation?.startedAt, data()?.conversation?.completedAt)}</span>
             </Show>

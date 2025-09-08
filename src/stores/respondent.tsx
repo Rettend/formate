@@ -12,27 +12,20 @@ export interface RespondentLocalState {
     }>
   }>
   draftsByConversation?: Record<string, Record<string, unknown>>
-}
-
-export interface RespondentSessionState {
-  byConversation: Record<string, {
+  byConversation?: Record<string, {
     backRemaining?: number | null
   }>
 }
 
 const LocalCtx = createContext<[Store<RespondentLocalState>, SetStoreFunction<RespondentLocalState>]>()
-const SessionCtx = createContext<[Store<RespondentSessionState>, SetStoreFunction<RespondentSessionState>]>()
 
 export function RespondentStoreProvider(props: ParentProps) {
   const isBrowser = typeof window !== 'undefined'
   const localStorage = isBrowser ? window.localStorage : undefined
-  const sessionStorage = isBrowser ? window.sessionStorage : undefined
 
   const [localStore, setLocalStore] = createStore<RespondentLocalState>({
     byForm: {},
     draftsByConversation: {},
-  })
-  const [sessionStore, setSessionStore] = createStore<RespondentSessionState>({
     byConversation: {},
   })
 
@@ -41,16 +34,10 @@ export function RespondentStoreProvider(props: ParentProps) {
     storage: localStorage,
     sync: isBrowser ? storageSync : undefined,
   })
-  const [sessionState, setSessionState] = makePersisted([sessionStore, setSessionStore], {
-    name: 'respondent_session',
-    storage: sessionStorage,
-    sync: isBrowser ? storageSync : undefined,
-  })
+
   return (
     <LocalCtx.Provider value={[localState, setLocalState]}>
-      <SessionCtx.Provider value={[sessionState, setSessionState]}>
-        {props.children}
-      </SessionCtx.Provider>
+      {props.children}
     </LocalCtx.Provider>
   )
 }
@@ -69,12 +56,5 @@ export function useRespondentLocalStore() {
   const ctx = useContext(LocalCtx)
   if (!ctx)
     throw new Error('useRespondentLocalStore must be used within RespondentStoreProvider')
-  return ctx
-}
-
-export function useRespondentSessionStore() {
-  const ctx = useContext(SessionCtx)
-  if (!ctx)
-    throw new Error('useRespondentSessionStore must be used within RespondentStoreProvider')
   return ctx
 }

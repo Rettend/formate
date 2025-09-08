@@ -15,7 +15,7 @@ import { useAuth } from '~/lib/auth'
 import { answerQuestion, completeConversation, getOrCreateConversation, listTurns, resetConversation, respondentRewind, rewindOneStep } from '~/server/conversations'
 import { getPublicFormBySlug } from '~/server/forms'
 import { redeemInvite, resolveInviteCode } from '~/server/invites'
-import { initProgress, useRespondentLocalStore, useRespondentSessionStore } from '~/stores/respondent'
+import { initProgress, useRespondentLocalStore } from '~/stores/respondent'
 
 export const route = {
   preload({ params }) {
@@ -40,16 +40,16 @@ export default function Respondent() {
   const complete = useAction(completeConversation)
   const redeem = useAction(redeemInvite)
 
-  // Per-tab anonymous identity (sessionStorage)
+  // Anonymous identity
   const getSessionAnonId = () => {
     if (typeof window === 'undefined')
       return 'anon'
     try {
       const k = 'respondent_session_id'
-      let v = window.sessionStorage.getItem(k)
+      let v = window.localStorage.getItem(k)
       if (!v) {
         v = (window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
-        window.sessionStorage.setItem(k, v)
+        window.localStorage.setItem(k, v)
       }
       return v
     }
@@ -69,7 +69,6 @@ export default function Respondent() {
   const [redeemAlreadyUsed, setRedeemAlreadyUsed] = createSignal(false)
   const [inviteInput, setInviteInput] = createSignal('')
   const [inviteHandled, setInviteHandled] = createSignal(false)
-  const [session, setSession] = useRespondentSessionStore()
   const [prefillByTurnId, setPrefillByTurnId] = createSignal<Record<string, unknown>>({})
   const [confirmCompleteOpen, setConfirmCompleteOpen] = createSignal(false)
 
@@ -103,8 +102,9 @@ export default function Respondent() {
       return { items: [], remainingBack: null as number | null, status: 'deleted' as const }
     }
     if (!isOwner() && typeof res?.remainingBack === 'number') {
-      setSession('byConversation', convId, prev => prev ?? ({}))
-      setSession('byConversation', convId, 'backRemaining', res.remainingBack)
+      setLocal('byConversation', prev => prev ?? ({}))
+      setLocal('byConversation', convId, prev => prev ?? ({}))
+      setLocal('byConversation', convId, 'backRemaining', res.remainingBack)
     }
     return res
   })
@@ -121,7 +121,7 @@ export default function Respondent() {
     const cid = conversationId()
     if (!cid)
       return null
-    const v = session.byConversation[cid]?.backRemaining
+    const v = local.byConversation?.[cid]?.backRemaining
     return typeof v === 'number' ? v : null
   })
 
@@ -143,19 +143,20 @@ export default function Respondent() {
           const limit = Number((((form() as any)?.settingsJson as any)?.access?.respondentBackLimit ?? 0))
           const initVal = Number.isFinite(limit) ? Math.max(0, Math.trunc(limit)) : 0
           const cid = conv.id
-          setSession('byConversation', cid, prev => prev ?? ({}))
-          setSession('byConversation', cid, 'backRemaining', initVal)
+          setLocal('byConversation', prev => prev ?? ({}))
+          setLocal('byConversation', cid, prev => prev ?? ({}))
+          setLocal('byConversation', cid, 'backRemaining', initVal)
         }
         await revalidate([listTurns.key])
         // Clear any pending invite-related hints once we successfully start
         try {
           if (typeof window !== 'undefined')
-            window.sessionStorage?.removeItem(`invite_redeem_used_${f.id}`)
+            window.localStorage?.removeItem(`invite_redeem_used_${f.id}`)
         }
         catch {}
         try {
           if (typeof window !== 'undefined')
-            window.sessionStorage?.removeItem(`invite_redeemed_for_${f.id}`)
+            window.localStorage?.removeItem(`invite_redeemed_for_${f.id}`)
         }
         catch {}
       }
@@ -167,9 +168,9 @@ export default function Respondent() {
       try {
         if (typeof window !== 'undefined') {
           const k = `invite_redeem_used_${f.id}`
-          usedHint = window.sessionStorage?.getItem(k) === '1'
+          usedHint = window.localStorage?.getItem(k) === '1'
           // Consume the hint regardless
-          window.sessionStorage?.removeItem(k)
+          window.localStorage?.removeItem(k)
         }
       }
       catch {}
@@ -204,8 +205,9 @@ export default function Respondent() {
         const remaining = typeof (res as any)?.remaining === 'number' ? (res as any).remaining : backRemaining()
         const cid = convId
         if (cid) {
-          setSession('byConversation', cid, prev => prev ?? ({}))
-          setSession('byConversation', cid, 'backRemaining', remaining ?? 0)
+          setLocal('byConversation', prev => prev ?? ({}))
+          setLocal('byConversation', cid, prev => prev ?? ({}))
+          setLocal('byConversation', cid, 'backRemaining', remaining ?? 0)
         }
       }
       await revalidate([listTurns.key])
@@ -425,13 +427,13 @@ export default function Respondent() {
           if (redeemAlreadyUsed()) {
             try {
               if (typeof window !== 'undefined')
-                window.sessionStorage?.setItem(`invite_redeem_used_${res.formId}`, '1')
+                window.localStorage?.setItem(`invite_redeem_used_${res.formId}`, '1')
             }
             catch {}
           }
           try {
             if (typeof window !== 'undefined')
-              window.sessionStorage?.setItem(`invite_redeemed_for_${res.formId}`, '1')
+              window.localStorage?.setItem(`invite_redeemed_for_${res.formId}`, '1')
           }
           catch {}
           nav(`/r/${res.formId}`, { replace: true })
@@ -477,7 +479,7 @@ export default function Respondent() {
   const inviteRedeemedHint = createMemo(() => {
     try {
       if (typeof window !== 'undefined' && formId())
-        return window.sessionStorage?.getItem(`invite_redeemed_for_${formId()}`) === '1'
+        return window.localStorage?.getItem(`invite_redeemed_for_${formId()}`) === '1'
     }
     catch {}
     return false
