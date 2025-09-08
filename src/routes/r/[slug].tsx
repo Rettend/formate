@@ -215,7 +215,7 @@ export default function Respondent() {
         const targetId = res?.reopenedTurnId ? `#answer-${res.reopenedTurnId}` : '[data-active-turn] textarea, [data-active-turn] input'
         const next = document.querySelector(targetId) as HTMLInputElement | HTMLTextAreaElement | null
         if (res?.reopenedTurnId)
-          setPrefillByTurnId(prev => ({ ...prev, [res.reopenedTurnId!]: (res as any)?.previousAnswer }))
+          setPrefillByTurnId(prev => ({ ...prev, [res.reopenedTurnId!]: res?.previousAnswer }))
         next?.focus()
       })
     }
@@ -240,9 +240,9 @@ export default function Respondent() {
       setLocal('draftsByConversation', prev => prev ?? ({}))
       setLocal('draftsByConversation', convId, prev => prev ?? ({}))
       setLocal('draftsByConversation', convId, produce((byKey) => {
-        const fieldId = (turn as any)?.questionJson?.id
+        const fieldId = turn?.questionJson?.id
         const k = `${turn.id}:${fieldId}`
-        delete (byKey as any)[k]
+        delete byKey[k]
       }))
       setPrefillByTurnId((prev) => {
         const { [turn.id]: _removed, ...rest } = prev
@@ -286,9 +286,29 @@ export default function Respondent() {
     const convId = progress()?.conversationId
     if (!convId)
       return
+    // If there's an active turn with a value, include it so the answer is saved before completing
+    const turn = activeTurn()
+    const inputEl = turn ? (document.getElementById(`answer-${turn.id}`) as HTMLInputElement | HTMLTextAreaElement | null) : null
+    const value = inputEl?.value
     setLoading(true)
     try {
-      await complete({ conversationId: convId })
+      if (turn && typeof value !== 'undefined' && value !== null && String(value).trim().length > 0) {
+        await complete({ conversationId: convId, turnId: turn.id, value })
+        setLocal('draftsByConversation', prev => prev ?? ({}))
+        setLocal('draftsByConversation', convId, prev => prev ?? ({}))
+        setLocal('draftsByConversation', convId, produce((byKey) => {
+          const fieldId = turn?.questionJson?.id
+          const k = `${turn.id}:${fieldId}`
+          delete byKey[k]
+        }))
+        setPrefillByTurnId((prev) => {
+          const { [turn.id]: _removed, ...rest } = prev
+          return rest
+        })
+      }
+      else {
+        await complete({ conversationId: convId })
+      }
       await revalidate([listTurns.key])
     }
     catch (e) {

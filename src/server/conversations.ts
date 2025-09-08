@@ -364,11 +364,15 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   return { completed: false }
 }, 'conv:answer')
 
-const completeSchema = z.object({ conversationId: idSchema })
+const completeSchema = z.object({
+  conversationId: idSchema,
+  turnId: idSchema.optional(),
+  value: z.union([z.string(), z.number(), z.boolean()]).optional(),
+})
 
-export const completeConversation = action(async (raw: { conversationId: string }) => {
+export const completeConversation = action(async (raw: { conversationId: string, turnId?: string, value?: string | number | boolean }) => {
   'use server'
-  const { conversationId } = safeParseOrThrow(completeSchema, raw, 'conv:complete')
+  const { conversationId, turnId, value } = safeParseOrThrow(completeSchema, raw, 'conv:complete')
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
@@ -377,6 +381,24 @@ export const completeConversation = action(async (raw: { conversationId: string 
   const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
   if (!ok)
     throw new Error('Forbidden')
+
+  // If a pending answer was provided for the active turn, persist it without generating a follow-up
+  if (turnId && typeof value !== 'undefined') {
+    await db.transaction(async (tx) => {
+      const [turn] = await tx.select().from(Turns).where(eq(Turns.id, turnId))
+      if (!turn)
+        return
+      if (turn.conversationId !== conversationId)
+        throw new Error('Invalid turn')
+      if (turn.status !== 'awaiting_answer')
+        return
+      const answerJson = { value, providedAt: new Date().toISOString() }
+      await tx
+        .update(Turns)
+        .set({ answerJson, status: 'answered', answeredAt: new Date() })
+        .where(and(eq(Turns.id, turnId), eq(Turns.status, 'awaiting_answer')))
+    })
+  }
 
   const [updated] = await db
     .update(Conversations)
