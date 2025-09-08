@@ -1,11 +1,117 @@
-import { query } from '@solidjs/router'
-import { and, count, desc, eq, gte, inArray } from 'drizzle-orm'
+import { action, query } from '@solidjs/router'
+import { and, asc, count, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import { getRequestEvent } from 'solid-js/web'
 import { z } from 'zod'
+import { idSchema, safeParseOrThrow } from '~/lib/validation'
+import { assertProviderAllowedForUser } from './ai'
 import { db } from './db'
-import { Conversations, Forms, Invites, Turns, Users } from './db/schema'
+import { Conversations, Forms, Invites, Summaries, Turns, Users } from './db/schema'
 
-const rangeSchema = z.enum(['7d', '30d', '90d']).default('7d')
+const rangeSchema = z.enum(['7d', '30d', '90d'])
+
+function rangeToDates(range: '7d' | '30d' | '90d') {
+  const now = new Date()
+  const start = new Date(now)
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
+  start.setDate(now.getDate() - days)
+  return { start, end: now }
+}
+
+export const generateFormSummary = action(async (raw: { formId: string, range: '7d' | '30d' | '90d' }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+  const input = safeParseOrThrow(z.object({ formId: idSchema, range: rangeSchema }), raw, 'analytics:generateFormSummary')
+
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
+  if (!form)
+    throw new Error('Form not found')
+  if (form.ownerUserId !== session.user.id)
+    throw new Error('Forbidden')
+
+  const provider = form.aiConfigJson?.provider
+  const modelId = form.aiConfigJson?.modelId
+  const prompt = form.aiConfigJson?.prompt
+  if (!provider || !modelId || !prompt)
+    throw new Error('AI not configured for this form')
+  await assertProviderAllowedForUser(provider, session.user.id)
+
+  const { start, end } = rangeToDates(input.range)
+  const conversations = await db
+    .select()
+    .from(Conversations)
+    .where(and(eq(Conversations.formId, input.formId), eq(Conversations.status, 'completed'), gte(Conversations.completedAt, start), lte(Conversations.completedAt, end)))
+    .orderBy(desc(Conversations.completedAt))
+    .limit(50)
+
+  // Gather compact transcript overview
+  const convIds = conversations.map(c => c.id)
+  const history: Array<{ index: number, question?: { label: string }, answer?: unknown }[]> = []
+  if (convIds.length > 0) {
+    for (const cid of convIds) {
+      const turns = await db
+        .select()
+        .from(Turns)
+        .where(eq(Turns.conversationId, cid))
+        .orderBy(asc(Turns.index))
+      history.push(turns.map(t => ({ index: t.index, question: t.questionJson ? { label: t.questionJson.label } : undefined, answer: t.answerJson ? t.answerJson.value : undefined })))
+    }
+  }
+
+  const { generateFormInsights } = await import('~/lib/ai/summary')
+  const bullets = await generateFormInsights({
+    provider,
+    modelId,
+    apiKeyEnc: form.aiProviderKeyEnc,
+    formGoalPrompt: prompt,
+    planSummary: form.settingsJson?.summary ?? undefined,
+    transcriptSamples: history,
+  })
+
+  // Upsert form-level summary
+  const existing = await db
+    .select()
+    .from(Summaries)
+    .where(and(eq(Summaries.kind, 'form'), eq(Summaries.formId, input.formId)))
+    .limit(1)
+  if (existing.length > 0) {
+    await db.update(Summaries).set({ bulletsJson: bullets, updatedAt: new Date() }).where(eq(Summaries.id, existing[0].id))
+  }
+  else {
+    await db.insert(Summaries).values({
+      kind: 'form',
+      formId: input.formId,
+      bulletsJson: bullets,
+      provider: form.aiConfigJson?.provider ?? null,
+      modelId: form.aiConfigJson?.modelId ?? null,
+      createdByUserId: session.user.id,
+    })
+  }
+
+  return { bullets }
+}, 'analytics:generateFormSummary')
+
+export const getFormSummary = query(async (raw: { formId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+  const { formId } = safeParseOrThrow(z.object({ formId: idSchema }), raw, 'analytics:getFormSummary')
+
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
+  if (!form)
+    throw new Error('Form not found')
+  if (form.ownerUserId !== session.user.id)
+    throw new Error('Forbidden')
+
+  const [row] = await db.select().from(Summaries).where(and(eq(Summaries.kind, 'form'), eq(Summaries.formId, formId))).limit(1)
+  return { bullets: row?.bulletsJson ?? [] }
+}, 'analytics:getFormSummary')
+
+const rangeSchemaTime = z.enum(['7d', '30d', '90d']).default('7d')
 
 function rangeToSince(range: '7d' | '30d' | '90d') {
   const days = range === '90d' ? 90 : range === '30d' ? 30 : 7
@@ -29,7 +135,7 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
     .select({ c: count() })
     .from(Forms)
     .where(eq(Forms.ownerUserId, userId))
-  const totalForms = Number((formsCountRows[0] as any)?.c ?? 0)
+  const totalForms = Number((formsCountRows[0])?.c ?? 0)
 
   const ownedFormIds = await db
     .select({ id: Forms.id })
@@ -43,14 +149,14 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
     .select({ c: count() })
     .from(Conversations)
     .where(and(inArray(Conversations.formId, formIds), eq(Conversations.status, 'active')))
-  const activeConversations = Number((activeRows[0] as any)?.c ?? 0)
+  const activeConversations = Number((activeRows[0])?.c ?? 0)
 
   const since = rangeToSince('7d')
   const respRows = await db
     .select({ c: count() })
     .from(Conversations)
-    .where(and(inArray(Conversations.formId, formIds), eq(Conversations.status, 'completed'), gte(Conversations.completedAt as any, since as any)))
-  const responses7d = Number((respRows[0] as any)?.c ?? 0)
+    .where(and(inArray(Conversations.formId, formIds), eq(Conversations.status, 'completed'), gte(Conversations.completedAt, since)))
+  const responses7d = Number(respRows[0]?.c ?? 0)
 
   return { totalForms, responses7d, activeConversations }
 }, 'analytics:dashboardStats')
@@ -76,7 +182,7 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     .where(eq(Forms.ownerUserId, userId))
   const ownedIds = (formId ? owned.filter(f => f.id === formId) : owned).map(f => f.id)
   if (ownedIds.length === 0)
-    return { items: [] as Array<any> }
+    return { items: [] }
 
   // Fetch recent completed conversations
   const rows = await db
@@ -96,7 +202,7 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     .offset(paged ? ((page - 1) * pageSize) : undefined as unknown as number)
 
   if (rows.length === 0)
-    return paged ? { items: [] as Array<any>, page, pageSize, hasMore: false } : { items: [] as Array<any> }
+    return paged ? { items: [], page, pageSize, hasMore: false } : { items: [] }
 
   const convIds = rows.map(r => r.id)
   // Count turns per conversation
@@ -105,7 +211,7 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
     .from(Turns)
     .where(inArray(Turns.conversationId, convIds))
     .groupBy(Turns.conversationId)
-  const turnCounts = new Map<string, number>(turnCountsRows.map(r => [r.conversationId, Number((r as any).c ?? 0)]))
+  const turnCounts = new Map<string, number>(turnCountsRows.map(r => [r.conversationId, Number(r.c ?? 0)]))
 
   // Fetch ancillary info
   const userIds = rows.map(r => r.respondentUserId).filter(Boolean) as string[]
@@ -121,23 +227,23 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
   const items = trimmed.map(r => ({
     conversationId: r.id,
     formId: r.formId,
-    formTitle: (formById.get(r.formId) as any)?.title ?? 'Form',
+    formTitle: formById.get(r.formId)?.title ?? 'Form',
     provider: (() => {
-      const f: any = formById.get(r.formId)
-      return (f?.aiConfigJson?.provider as string) ?? null
+      const f = formById.get(r.formId)
+      return f?.aiConfigJson?.provider ?? null
     })(),
     modelId: (() => {
-      const f: any = formById.get(r.formId)
-      return (f?.aiConfigJson?.modelId as string) ?? null
+      const f = formById.get(r.formId)
+      return f?.aiConfigJson?.modelId ?? null
     })(),
     startedAt: r.startedAt,
     completedAt: r.completedAt,
     steps: turnCounts.get(r.id) ?? 0,
     respondent: (() => {
-      const u = r.respondentUserId ? (userById.get(r.respondentUserId) as any) : null
+      const u = r.respondentUserId ? userById.get(r.respondentUserId) : null
       if (u)
         return { type: 'user', name: u.name ?? null, email: u.email ?? null }
-      const inv = r.inviteJti ? (inviteByJti.get(r.inviteJti) as any) : null
+      const inv = r.inviteJti ? inviteByJti.get(r.inviteJti) : null
       return inv ? { type: 'invite', label: inv.label ?? null, code: inv.shortCode } : { type: 'unknown' }
     })(),
   }))
@@ -157,7 +263,7 @@ export const getCompletionTimeSeries = query(async (raw?: { range?: '7d' | '30d'
   if (!userId)
     throw new Error('Unauthorized')
 
-  const range = rangeSchema.parse(raw?.range ?? '7d')
+  const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)
   const formId = raw?.formId ?? null
 
@@ -169,7 +275,7 @@ export const getCompletionTimeSeries = query(async (raw?: { range?: '7d' | '30d'
   const rows = await db
     .select({ completedAt: Conversations.completedAt })
     .from(Conversations)
-    .where(and(inArray(Conversations.formId, ids), eq(Conversations.status, 'completed'), gte(Conversations.completedAt as any, since as any)))
+    .where(and(inArray(Conversations.formId, ids), eq(Conversations.status, 'completed'), gte(Conversations.completedAt, since)))
 
   const counts = new Map<string, number>()
   const today = new Date()
@@ -179,7 +285,7 @@ export const getCompletionTimeSeries = query(async (raw?: { range?: '7d' | '30d'
     d.setDate(since.getDate() + i)
     counts.set(d.toISOString().slice(0, 10), 0)
   }
-  for (const r of rows as any[]) {
+  for (const r of rows) {
     const key = (r.completedAt as Date).toISOString().slice(0, 10)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
@@ -195,7 +301,7 @@ export const getFunnelStats = query(async (raw?: { range?: '7d' | '30d' | '90d',
   if (!userId)
     throw new Error('Unauthorized')
 
-  const range = rangeSchema.parse(raw?.range ?? '7d')
+  const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)
   const formId = raw?.formId ?? null
 
@@ -207,14 +313,14 @@ export const getFunnelStats = query(async (raw?: { range?: '7d' | '30d' | '90d',
   const startedRows = await db
     .select({ c: count() })
     .from(Conversations)
-    .where(and(inArray(Conversations.formId, ids), gte(Conversations.startedAt as any, since as any)))
+    .where(and(inArray(Conversations.formId, ids), gte(Conversations.startedAt, since)))
   const completedRows = await db
     .select({ c: count() })
     .from(Conversations)
-    .where(and(inArray(Conversations.formId, ids), eq(Conversations.status, 'completed'), gte(Conversations.completedAt as any, since as any)))
+    .where(and(inArray(Conversations.formId, ids), eq(Conversations.status, 'completed'), gte(Conversations.completedAt, since)))
 
-  const started = Number((startedRows[0] as any)?.c ?? 0)
-  const completed = Number((completedRows[0] as any)?.c ?? 0)
+  const started = Number(startedRows[0]?.c ?? 0)
+  const completed = Number(completedRows[0]?.c ?? 0)
   const completionRate = started > 0 ? Math.round((completed / started) * 1000) / 10 : 0
   return { started, completed, completionRate }
 }, 'analytics:funnel')
@@ -227,20 +333,20 @@ export const getFormBreakdown = query(async (raw?: { range?: '7d' | '30d' | '90d
   if (!userId)
     throw new Error('Unauthorized')
 
-  const range = rangeSchema.parse(raw?.range ?? '7d')
+  const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)
   const formId = raw?.formId ?? null
 
   const owned = await db.select({ id: Forms.id, title: Forms.title }).from(Forms).where(eq(Forms.ownerUserId, userId))
   const forms = formId ? owned.filter(f => f.id === formId) : owned
   if (forms.length === 0)
-    return { items: [] as Array<any> }
+    return { items: [] }
 
   const ids = forms.map(f => f.id)
   const convs = await db
     .select({ id: Conversations.id, formId: Conversations.formId, status: Conversations.status, startedAt: Conversations.startedAt, completedAt: Conversations.completedAt })
     .from(Conversations)
-    .where(and(inArray(Conversations.formId, ids), gte(Conversations.startedAt as any, since as any)))
+    .where(and(inArray(Conversations.formId, ids), gte(Conversations.startedAt, since)))
 
   const convIds = convs.map(c => c.id)
   const turnCountsRows = convIds.length > 0
@@ -250,12 +356,12 @@ export const getFormBreakdown = query(async (raw?: { range?: '7d' | '30d' | '90d
         .where(inArray(Turns.conversationId, convIds))
         .groupBy(Turns.conversationId)
     : []
-  const turnCounts = new Map<string, number>(turnCountsRows.map(r => [r.conversationId, Number((r as any).c ?? 0)]))
+  const turnCounts = new Map<string, number>(turnCountsRows.map(r => [r.conversationId, Number(r.c ?? 0)]))
 
   const byForm: Record<string, { started: number, completed: number, totalSteps: number, lastCompletedAt?: Date }> = {}
   for (const f of forms)
     byForm[f.id] = { started: 0, completed: 0, totalSteps: 0, lastCompletedAt: undefined }
-  for (const c of convs as any[]) {
+  for (const c of convs) {
     const bucket = byForm[c.formId]
     if (!bucket)
       continue

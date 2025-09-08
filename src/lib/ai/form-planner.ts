@@ -12,7 +12,6 @@ Use only these field types: short_text, long_text, multiple_choice, multi_select
 
 function buildPlanningMessages(prompt: string): ModelMessage[] {
   return [
-    { role: 'system', content: SYSTEM_INSTRUCTIONS },
     {
       role: 'user',
       content: `Goal & constraints:\n${prompt}`,
@@ -36,6 +35,7 @@ export async function planFormWithLLM(options: {
 }): Promise<{ plan: FormPlan, tokensIn?: number, tokensOut?: number }> {
   const { object } = await generateStructured({
     schema: formPlanCoreSchema,
+    system: SYSTEM_INSTRUCTIONS,
     messages: buildPlanningMessages(options.prompt),
     provider: options.provider,
     modelId: options.modelId,
@@ -65,8 +65,8 @@ export async function simulateTestRun(options: {
       provider: options.provider,
       modelId: options.modelId,
       apiKey: options.apiKey,
+      system: 'You are role-playing as a survey respondent.',
       messages: [
-        { role: 'system', content: 'Answer concisely as a realistic respondent.' },
         { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
       ],
       providerOptions: { temperature: 0.5 },
@@ -96,8 +96,8 @@ export async function simulateTestStep(options: {
     provider: options.provider,
     modelId: options.modelId,
     apiKey: options.apiKey,
+    system: 'You are role-playing as a survey respondent.',
     messages: [
-      { role: 'system', content: 'You are role-playing as a survey respondent.' },
       { role: 'user', content: `Question: ${q}\nType: ${f.type}\nOptions (if any): ${(f.options ?? []).map(o => o.label).join(', ')}` },
     ],
     providerOptions: { temperature: 0.5 },

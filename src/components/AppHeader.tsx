@@ -48,12 +48,14 @@ export function AppHeader() {
                     {opt => (
                       <DropdownMenuItem onClick={() => {
                         const id = opt.id ?? ''
-                        actions.setSelectedForm(id === '' ? null : id)
-                        if (location.pathname === '/forms' || location.pathname.startsWith('/forms/')) {
-                          if (id === '')
-                            nav('/forms')
-                          else
-                            nav(`/forms/${id}`)
+                        const prev = selectedId()
+                        if (id !== prev) {
+                          actions.setSelectedForm(id === '' ? null : id)
+                          if (location.pathname === '/forms' || location.pathname.startsWith('/forms/')) {
+                            const target = id === '' ? '/forms' : `/forms/${id}`
+                            if (location.pathname !== target)
+                              nav(target)
+                          }
                         }
                       }}
                       >
@@ -80,12 +82,14 @@ export function AppHeader() {
                 value={formOptions().find(o => o.id === selectedId())}
                 onChange={(opt) => {
                   const id = opt?.id ?? ''
+                  const prev = selectedId()
+                  if (id === prev)
+                    return
                   actions.setSelectedForm(id === '' ? null : id)
                   if (location.pathname === '/forms' || location.pathname.startsWith('/forms/')) {
-                    if (id === '')
-                      nav('/forms')
-                    else
-                      nav(`/forms/${id}`)
+                    const target = id === '' ? '/forms' : `/forms/${id}`
+                    if (location.pathname !== target)
+                      nav(target)
                   }
                 }}
                 placeholder="All forms"

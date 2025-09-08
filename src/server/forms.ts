@@ -322,11 +322,11 @@ export const duplicateForm = action(async (raw: { formId: string }) => {
     .values({
       ownerUserId: session.user.id,
       title: newTitle,
-      slug: null as any,
-      aiConfigJson: (orig as any).aiConfigJson ?? null as any,
-      aiProviderKeyEnc: (orig as any).aiProviderKeyEnc ?? null as any,
-      seedQuestionJson: (orig as any).seedQuestionJson ?? null as any,
-      settingsJson: (orig as any).settingsJson ?? null as any,
+      slug: null,
+      aiConfigJson: orig.aiConfigJson ?? null,
+      aiProviderKeyEnc: orig.aiProviderKeyEnc ?? null,
+      seedQuestionJson: orig.seedQuestionJson ?? null,
+      settingsJson: orig.settingsJson ?? null,
       status: 'draft',
       updatedAt: new Date(),
     })
@@ -378,7 +378,7 @@ export const saveFormProviderKey = action(async (raw: { formId: string, apiKey: 
   if (!form)
     throw new Error('Not found')
 
-  const provider: string | undefined = (form as any)?.aiConfigJson?.provider
+  const provider: string | undefined = form.aiConfigJson?.provider
   if (provider === 'formate')
     throw new Error('Formate provider uses a server-managed key. No per-form key is needed.')
 
@@ -405,7 +405,7 @@ export const clearFormProviderKey = action(async (raw: { formId: string }) => {
 
   const [updated] = await db
     .update(Forms)
-    .set({ aiProviderKeyEnc: null as any, updatedAt: new Date() })
+    .set({ aiProviderKeyEnc: null, updatedAt: new Date() })
     .where(eq(Forms.id, input.formId))
     .returning({ id: Forms.id })
   return { ok: Boolean(updated) }
@@ -450,8 +450,8 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   const merged = {
     ...existing,
     ...plan as any,
-    access: (existing as any).access,
-    stopping: (existing as any).stopping,
+    access: existing.access,
+    stopping: existing.stopping,
   }
   const safePlan = formPlanSchema.parse(merged)
 
@@ -571,8 +571,8 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
   if (!form)
     throw new Error('Not found')
 
-  const existing = (form as any).settingsJson ?? {}
-  const prevStopping = (existing as any).stopping || {}
+  const existing = (form.settingsJson as any) ?? {}
+  const prevStopping = existing.stopping || {}
   const nextStopping = { ...prevStopping, ...input.stopping }
   const next = { ...existing, stopping: nextStopping }
 
@@ -585,6 +585,36 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
     throw new Error('Update failed')
   return { ok: true }
 }, 'forms:saveStopping')
+
+const summariesSchema = z.object({ autoResponse: z.boolean().optional() })
+
+export const saveFormSummaries = action(async (raw: { formId: string, summaries: z.infer<typeof summariesSchema> }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  if (!session?.user?.id)
+    throw new Error('Unauthorized')
+
+  const input = safeParseOrThrow(z.object({ formId: idSchema, summaries: summariesSchema }), raw, 'forms:saveSummaries')
+
+  const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
+  if (!form)
+    throw new Error('Not found')
+
+  const existing = form.settingsJson ?? {}
+  const prev = (existing as any).summaries || {}
+  const nextSummaries = { ...prev }
+  if (typeof input.summaries.autoResponse === 'boolean')
+    nextSummaries.autoResponse = input.summaries.autoResponse
+  const next = { ...existing, summaries: nextSummaries }
+
+  const [updated] = await db
+    .update(Forms)
+    .set({ settingsJson: next as any, updatedAt: new Date() })
+    .where(eq(Forms.id, input.formId))
+    .returning({ id: Forms.id })
+  return { ok: Boolean(updated) }
+}, 'forms:saveSummaries')
 
 const accessSchema = z.object({
   allowOAuth: z.boolean().optional(),
@@ -604,13 +634,13 @@ export const saveFormAccess = action(async (raw: { formId: string, access: z.inf
   if (!form)
     throw new Error('Not found')
 
-  const existing = (form as any).settingsJson ?? {}
+  const existing = form.settingsJson ?? {}
   const prevAccess = (existing as any).access || {}
   const nextAccess = { ...prevAccess }
   if (typeof input.access.allowOAuth === 'boolean')
-    (nextAccess as any).allowOAuth = input.access.allowOAuth
+    nextAccess.allowOAuth = input.access.allowOAuth
   if (typeof input.access.respondentBackLimit === 'number')
-    (nextAccess as any).respondentBackLimit = input.access.respondentBackLimit
+    nextAccess.respondentBackLimit = input.access.respondentBackLimit
   const next = { ...existing, access: nextAccess }
 
   const [updated] = await db

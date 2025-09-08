@@ -1,4 +1,5 @@
 import type { FormField, FormPlan, TestRunStep } from '~/lib/validation/form-plan'
+import { sql } from 'drizzle-orm'
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { uuidV7Base58 } from '~/lib/index'
 
@@ -96,6 +97,27 @@ export const Conversations = sqliteTable('conversations', {
 export type Conversation = typeof Conversations.$inferSelect
 export type ConversationNew = typeof Conversations.$inferInsert
 
+export const Summaries = sqliteTable('summaries', {
+  id: text().primaryKey().$defaultFn(() => uuidV7Base58()),
+  kind: text().notNull().$type<'response' | 'form'>(),
+  formId: text().notNull().references(() => Forms.id, { onDelete: 'cascade' }),
+  conversationId: text().references(() => Conversations.id, { onDelete: 'cascade' }),
+  bulletsJson: text({ mode: 'json' }).$type<string[]>().notNull(),
+  provider: text(),
+  modelId: text(),
+  createdByUserId: text().references(() => Users.id, { onDelete: 'set null' }),
+  createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, t => [
+  uniqueIndex('summaries_kind_conv_unique').on(t.kind, t.conversationId),
+  uniqueIndex('summaries_form_unique').on(t.formId).where(sql`${t.kind} = 'form'`),
+  index('summaries_form_idx').on(t.formId),
+  index('summaries_kind_idx').on(t.kind),
+])
+
+export type Summary = typeof Summaries.$inferSelect
+export type SummaryNew = typeof Summaries.$inferInsert
+
 // Turns capture each Q/A step with the exact question snapshot next to the answer
 export const Turns = sqliteTable('turns', {
   id: text().primaryKey().$defaultFn(() => uuidV7Base58()),
@@ -104,7 +126,7 @@ export const Turns = sqliteTable('turns', {
   questionJson: text({ mode: 'json' }).$type<FormField>().notNull(),
   plan: text(),
   answerJson: text({ mode: 'json' }).$type<{ value: unknown, providedAt: string }>(),
-  status: text().notNull().default('awaiting_answer'), // 'awaiting_answer' | 'answered'
+  status: text().notNull().$type<'awaiting_answer' | 'answered'>().default('awaiting_answer'),
   createdAt: integer({ mode: 'timestamp' }).$defaultFn(() => new Date()),
   answeredAt: integer({ mode: 'timestamp' }),
 }, t => [

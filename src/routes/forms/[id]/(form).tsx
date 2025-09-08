@@ -13,7 +13,7 @@ import { Checkbox } from '~/components/ui/checkbox'
 import { Label } from '~/components/ui/label'
 import { NumberField, NumberFieldDecrementTrigger, NumberFieldGroup, NumberFieldIncrementTrigger, NumberFieldInput } from '~/components/ui/number-field'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { clearFormProviderKey, deleteForm, duplicateForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, unpublishForm, updateForm } from '~/server/forms'
+import { clearFormProviderKey, deleteForm, duplicateForm, getForm, publishForm, saveFormAccess, saveFormProviderKey, saveFormSlug, saveFormStopping, saveFormSummaries, unpublishForm, updateForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
 export const route = {
@@ -37,6 +37,7 @@ function FormDetail() {
   const remove = useAction(deleteForm)
   const duplicate = useAction(duplicateForm)
   const saveStopping = useAction(saveFormStopping)
+  const saveSummaries = useAction(saveFormSummaries)
   const saveKey = useAction(saveFormProviderKey)
   const clearKey = useAction(clearFormProviderKey)
   const saveAccess = useAction(saveFormAccess)
@@ -559,6 +560,19 @@ function FormDetail() {
                                 </div>
                               </div>
 
+                            </div>
+                            <div class="mt-3 flex items-start space-x-2">
+                              <Checkbox
+                                id="auto-summary-on-complete"
+                                checked={Boolean((form()?.settingsJson as any)?.summaries?.autoResponse ?? false)}
+                                onChange={(v) => {
+                                  void saveSummaries({ formId: formId(), summaries: { autoResponse: Boolean(v) } }).then(() => revalidate([getForm.key]))
+                                }}
+                              />
+                              <div class="grid gap-1.5 leading-none">
+                                <Label for="auto-summary-on-complete">Auto-generate response summary on completion</Label>
+                                <p class="text-xs text-muted-foreground">Creates concise bullets for each completed conversation.</p>
+                              </div>
                             </div>
                           </div>
                         </TabsContent>

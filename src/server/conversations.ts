@@ -15,7 +15,7 @@ import { idSchema, safeParseOrThrow } from '~/lib/validation'
 import { ensure } from '~/utils'
 import { assertProviderAllowedForUser } from './ai'
 import { db } from './db'
-import { Conversations, Forms, Turns } from './db/schema'
+import { Conversations, Forms, Summaries, Turns } from './db/schema'
 
 interface Identity { userId?: string, inviteJti?: string }
 
@@ -196,7 +196,7 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   const { conversationId, turnId, value } = safeParseOrThrow(answerQuestionSchema, raw, 'conv:answer')
   // Use a transaction so that if AI generation/validation fails,
   // we roll back the turn update and allow retry without leaving the turn answered.
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
     if (!conv)
       throw new Error('Conversation not found')
@@ -287,6 +287,19 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
 
     return { nextTurn: followUp.turn }
   })
+  try {
+    if ((result as any)?.completed) {
+      const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+      if (conv) {
+        const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+        const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+        if (auto)
+          await generateAndSaveConversationSummary(conversationId)
+      }
+    }
+  }
+  catch {}
+  return result
 }, 'conv:answer')
 
 const completeSchema = z.object({ conversationId: idSchema })
@@ -309,6 +322,13 @@ export const completeConversation = action(async (raw: { conversationId: string 
     .where(eq(Conversations.id, conversationId))
     .returning()
 
+  try {
+    const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+    const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+    if (auto)
+      await generateAndSaveConversationSummary(conversationId)
+  }
+  catch {}
   return { ok: Boolean(updated) }
 }, 'conv:complete')
 
@@ -939,6 +959,12 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
     .where(eq(Turns.conversationId, conversationId))
     .orderBy(asc(Turns.index))
 
+  const [summary] = await db
+    .select()
+    .from(Summaries)
+    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .limit(1)
+
   return {
     conversation: {
       id: (conv as any).id,
@@ -946,6 +972,7 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
       status: (conv as any).status,
       startedAt: (conv as any).startedAt,
       completedAt: (conv as any).completedAt,
+      summaryBullets: (summary as any)?.bulletsJson ?? null,
       endReason: (() => {
         const m = parseMeta((conv as any).clientMetaJson)
         const r = (m as any)?.end?.reason
@@ -955,3 +982,86 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
     turns,
   }
 }, 'conv:transcript')
+
+// Owner-only: generate or regenerate a conversation-level summary
+export const generateConversationSummary = action(async (raw: { conversationId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = ensure(session?.user?.id, 'Unauthorized')
+  const { conversationId } = safeParseOrThrow(z.object({ conversationId: idSchema }), raw, 'conv:generateSummary')
+
+  // Load conversation and form, ensure ownership
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Error('Conversation not found')
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  if (!form)
+    throw new Error('Form not found')
+  if ((form as any).ownerUserId !== userId)
+    throw new Error('Forbidden')
+
+  await generateAndSaveConversationSummary(conversationId)
+  const [summary] = await db
+    .select()
+    .from(Summaries)
+    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .limit(1)
+  return { summaryBullets: (summary as any)?.bulletsJson ?? null }
+}, 'conv:generateSummary')
+
+async function generateAndSaveConversationSummary(conversationId: string) {
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Error('Conversation not found')
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, (conv as any).formId))
+  if (!form)
+    throw new Error('Form not found')
+  const priorTurns = await db
+    .select()
+    .from(Turns)
+    .where(eq(Turns.conversationId, conversationId))
+    .orderBy(asc(Turns.index))
+
+  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
+  const modelId = (form as any).aiConfigJson?.modelId as string | undefined
+  const prompt = (form as any).aiConfigJson?.prompt as string | undefined
+  if (!provider || !modelId || !prompt)
+    throw new Error('AI not configured for this form')
+  await assertProviderAllowedForUser(provider, (form as any).ownerUserId)
+
+  const history = priorTurns.map((t: any) => ({ index: t.index, question: t.questionJson ? { label: t.questionJson.label } : undefined, answer: t.answerJson ? (t.answerJson as any).value : undefined }))
+  const { generateResponseSummary } = await import('~/lib/ai/summary')
+  const bullets = await generateResponseSummary({
+    provider,
+    modelId,
+    apiKeyEnc: (form as any).aiProviderKeyEnc,
+    formGoalPrompt: prompt,
+    planSummary: (form as any).settingsJson?.summary ?? undefined,
+    history,
+  })
+
+  // Upsert latest response-level summary into Summaries
+  const existing = await db
+    .select()
+    .from(Summaries)
+    .where(and(eq(Summaries.kind, 'response' as any), eq(Summaries.conversationId, conversationId)))
+    .limit(1)
+  if (existing.length > 0) {
+    await db
+      .update(Summaries)
+      .set({ bulletsJson: bullets as any, updatedAt: new Date() })
+      .where(eq(Summaries.id, (existing[0] as any).id))
+  }
+  else {
+    await db.insert(Summaries).values({
+      kind: 'response' as any,
+      formId: (form as any).id,
+      conversationId,
+      bulletsJson: bullets as any,
+      provider: (form as any).aiConfigJson?.provider ?? null as any,
+      modelId: (form as any).aiConfigJson?.modelId ?? null as any,
+      createdByUserId: (form as any).ownerUserId,
+    })
+  }
+}

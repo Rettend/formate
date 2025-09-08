@@ -41,8 +41,8 @@ export async function generateFollowUpObject(options: GenerateFollowUpOptions): 
 
     const resp = await generateStructured({
       schema,
+      system,
       messages: [
-        { role: 'system', content: system },
         { role: 'user', content: JSON.stringify(userPayload) },
       ],
       provider,
@@ -50,8 +50,9 @@ export async function generateFollowUpObject(options: GenerateFollowUpOptions): 
       apiKey,
       mode,
     })
+    console.log('REQUEST:', resp.request.body)
 
-    return isFormateProvider ? (resp as any).object.output : (resp as any).object
+    return isFormateProvider ? resp.object.output : resp.object
   }
   catch (err) {
     logAIError(err, logContext ?? 'conv:generateFollowUp')

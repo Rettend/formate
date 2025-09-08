@@ -1,11 +1,11 @@
 import { Protected } from '@rttnd/gau/client/solid'
-import { A, createAsync } from '@solidjs/router'
+import { A, createAsync, useAction } from '@solidjs/router'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { Button } from '~/components/ui/button'
 import { LineChart } from '~/components/ui/charts'
-import { getCompletionTimeSeries, getFormBreakdown, getFunnelStats } from '~/server/analytics'
+import { generateFormSummary, getCompletionTimeSeries, getFormBreakdown, getFormSummary, getFunnelStats } from '~/server/analytics'
 import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <Analytics />, '/')
@@ -17,6 +17,9 @@ function Analytics() {
   const series = createAsync(() => getCompletionTimeSeries({ range: range(), formId: formId() }))
   const funnel = createAsync(() => getFunnelStats({ range: range(), formId: formId() }))
   const breakdown = createAsync(() => getFormBreakdown({ range: range(), formId: formId() }))
+  const summary = createAsync(() => (formId() ? getFormSummary({ formId: formId() as string }) : Promise.resolve({ bullets: [] as string[] })))
+  const generate = useAction(generateFormSummary)
+  const [generating, setGenerating] = createSignal(false)
 
   const chartData = createMemo(() => {
     const buckets = series.latest?.buckets ?? []
@@ -107,6 +110,35 @@ function Analytics() {
             </Show>
           </div>
         </div>
+
+        <Show when={formId()}>
+          <div class="overflow-hidden border rounded-lg bg-card p-4 text-card-foreground shadow-sm">
+            <div class="mb-2 flex items-center justify-between">
+              <h2 class="text-sm font-semibold">Form insights</h2>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!formId() || generating()}
+                onClick={() => {
+                  if (!formId())
+                    return
+                  setGenerating(true)
+                  generate({ formId: formId() as string, range: range() }).finally(() => setGenerating(false))
+                }}
+              >
+                <span class={generating() ? 'i-svg-spinners:180-ring size-4' : 'i-ph:arrows-clockwise-bold size-4'} />
+                <span class="ml-1">{(summary()?.bullets?.length ?? 0) > 0 ? 'Regenerate' : 'Generate'}</span>
+              </Button>
+            </div>
+            <Show when={(summary()?.bullets?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No insights yet.</p>}>
+              <ul class="list-disc pl-5 text-sm space-y-1">
+                <For each={summary()?.bullets ?? []}>
+                  {b => (<li>{b}</li>)}
+                </For>
+              </ul>
+            </Show>
+          </div>
+        </Show>
       </section>
     </AppShell>
   )

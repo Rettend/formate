@@ -66,16 +66,18 @@ export async function streamChatText(options: {
 export async function generateStructured(options: {
   schema: any
   messages: ModelMessage[]
+  system?: string
   provider: Provider
   modelId: string
   apiKey?: string
   mode?: 'json' | 'tool' | 'auto'
   providerOptions?: any
 }) {
-  const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
+  const model = getProvider(options.provider, options.modelId, options.apiKey)
   return generateObject({
     model,
     schema: options.schema,
+    system: options.system,
     messages: options.messages,
     providerOptions: options.providerOptions,
     mode: options.mode ?? 'auto',
@@ -90,6 +92,6 @@ export function streamStructured(options: {
   apiKey?: string
   providerOptions?: any
 }) {
-  const model = getProvider(options.provider, options.modelId, options.provider === 'formate' ? undefined : options.apiKey)
+  const model = getProvider(options.provider, options.modelId, options.apiKey)
   return streamObject({ model, schema: options.schema, messages: options.messages, providerOptions: options.providerOptions })
 }

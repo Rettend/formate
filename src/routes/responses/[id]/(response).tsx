@@ -3,7 +3,7 @@ import { A, createAsync, revalidate, useAction, useNavigate, useParams } from '@
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
-import { deleteConversation, getConversationTranscript, listFormConversations } from '~/server/conversations'
+import { deleteConversation, generateConversationSummary, getConversationTranscript, listFormConversations } from '~/server/conversations'
 import { getForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
@@ -31,6 +31,31 @@ function Transcript() {
   const nav = useNavigate()
   const conversationId = createMemo(() => params.id)
   const data = createAsync(() => getConversationTranscript({ conversationId: conversationId() }))
+  const gen = useAction(generateConversationSummary)
+  const [generating, setGenerating] = createSignal(false)
+  const handleGenerate = async () => {
+    const id = conversationId()
+    if (!id)
+      return
+    try {
+      setGenerating(true)
+      await gen({ conversationId: id })
+      await revalidate([getConversationTranscript.key])
+    }
+    finally {
+      setGenerating(false)
+    }
+  }
+  const handleCopy = async () => {
+    const bullets = data()?.conversation?.summaryBullets ?? []
+    const text = bullets.map((b: string) => `- ${b}`).join('\n')
+    if (!text || text.trim().length === 0)
+      return
+    try {
+      await navigator.clipboard.writeText(text)
+    }
+    catch {}
+  }
   const formId = createMemo(() => data.latest?.conversation?.formId as string | undefined)
   const form = createAsync(async () => (formId() ? getForm({ formId: formId() as string }) : null))
   const remove = useAction(deleteConversation)
@@ -97,6 +122,37 @@ function Transcript() {
           </div>
         </div>
 
+        <Show when={form()?.id}>
+          <div class="mb-4 border rounded-lg bg-card p-4 text-card-foreground">
+            <div class="mb-2 flex items-center justify-between">
+              <h2 class="text-sm font-semibold">Summary</h2>
+              <div class="flex items-center gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  title="Copy"
+                  aria-label="Copy"
+                  onClick={() => { void handleCopy() }}
+                  disabled={(data()?.conversation?.summaryBullets?.length ?? 0) === 0}
+                >
+                  <span class="i-ph:copy-bold size-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { void handleGenerate() }} disabled={generating()}>
+                  <span class={generating() ? 'i-svg-spinners:180-ring size-4' : 'i-ph:arrows-clockwise-bold size-4'} />
+                  <span class="ml-1">{(data()?.conversation?.summaryBullets?.length ?? 0) > 0 ? 'Regenerate' : 'Generate'}</span>
+                </Button>
+              </div>
+            </div>
+            <Show when={(data()?.conversation?.summaryBullets?.length ?? 0) > 0} fallback={<p class="text-sm text-muted-foreground">No summary yet.</p>}>
+              <ul class="list-disc pl-5 text-sm space-y-1">
+                <For each={data()?.conversation?.summaryBullets ?? []}>
+                  {b => (<li>{b}</li>)}
+                </For>
+              </ul>
+            </Show>
+          </div>
+        </Show>
+
         <Show when={data()} fallback={<p class="text-sm text-muted-foreground">Loading…</p>}>
           <div class="mb-4 text-xs text-muted-foreground">
             <span>Status: {data()?.conversation?.status}</span>
@@ -110,7 +166,7 @@ function Transcript() {
             </Show>
             <Show when={form()?.aiConfigJson?.provider && form()?.aiConfigJson?.modelId}>
               <span class="mx-2 opacity-60">•</span>
-              <span>LLM {form()?.aiConfigJson.provider} · {form()?.aiConfigJson.modelId}</span>
+              <span>{form()?.aiConfigJson.provider} · {form()?.aiConfigJson.modelId}</span>
             </Show>
             <Show when={data()?.conversation?.endReason}>
               <span class="mx-2 opacity-60">•</span>
