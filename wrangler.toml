@@ -8,3 +8,6 @@ routes = [ { pattern = "formate.app", custom_domain = true } ]
 [assets]
 binding = "ASSETS"
 directory = ".output/public"
+
+[observability.logs]
+enabled = true
