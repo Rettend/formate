@@ -733,40 +733,62 @@ async function createFollowUpTurnOrEndTx(
     ...incoming,
     id: incomingId ?? uuidV7Base58(),
   }
-  const inserted = await tx
-    // Attempt optimistic insert with RETURNING (preferred when supported)
-    .insert(Turns)
-    .values({
-      conversationId,
-      index: indexValue,
-      questionJson: question,
-      status: 'awaiting_answer',
-    })
-    .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
-    .returning()
-
-  // NOTE: Some production libsql / remote turso deployments have (rare) issues with
-  // INSERT .. ON CONFLICT DO NOTHING RETURNING in edge environments. To make this
-  // more robust (and observable) we:
-  // 1. Try the returning path (above)
-  // 2. If it throws OR returns empty, we fall back to a manual fetch
-  // 3. Emit structured debug logs when DEBUG_TURNS is set so we can inspect
+  let inserted: any[] = []
+  let primaryInsertError: any | null = null
+  // Attempt optimistic insert WITH RETURNING first
   try {
+    inserted = await tx
+      .insert(Turns)
+      .values({
+        conversationId,
+        index: indexValue,
+        questionJson: question,
+        status: 'awaiting_answer',
+      })
+      .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
+      .returning()
     if (inserted.length > 0) {
       console.log('[turns] inserted-followup', { conversationId, indexValue, id: inserted[0].id })
       return { kind: 'turn', turn: inserted[0] }
     }
   }
   catch (err: any) {
-    // Swallow after logging; we'll retry via fallback select below
+    primaryInsertError = err
     try {
-      console.log('[turns] insert error (will fallback)', {
+      console.log('[turns] insert error (RETURNING path) -> will fallback', {
         conversationId,
         indexValue,
         message: err?.message,
       })
     }
     catch {}
+  }
+
+  // If RETURNING path produced neither rows nor a recoverable row, attempt NON-RETURNING insert
+  if (inserted.length === 0) {
+    try {
+      await tx
+        .insert(Turns)
+        .values({
+          conversationId,
+          index: indexValue,
+          questionJson: question,
+          status: 'awaiting_answer',
+        })
+        .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
+      console.log('[turns] fallback non-returning insert attempted', { conversationId, indexValue })
+    }
+    catch (err2: any) {
+      try {
+        console.log('[turns] non-returning insert error', {
+          conversationId,
+          indexValue,
+          primaryError: primaryInsertError?.message,
+          message: err2?.message,
+        })
+      }
+      catch {}
+    }
   }
 
   // Fallback: ensure row exists / retrieve it (covers: conflict, unsupported RETURNING, transient race)
