@@ -11,9 +11,11 @@
 - [x] forms/id: settings collapsible reopens after save and page refresh
 - [x] allow respondents to complete forms with a button
 - [x] view form completions page
+- [x] global form selector
 
 ## later
 
-- [ ] global form selector
 - [ ] use api key from profile for form quick button
+- [ ] redo and fix live test run
+- [ ] form page polish: plan view, editing
 - [ ] lotta polish

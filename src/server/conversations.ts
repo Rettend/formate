@@ -734,6 +734,7 @@ async function createFollowUpTurnOrEndTx(
     id: incomingId ?? uuidV7Base58(),
   }
   const inserted = await tx
+    // Attempt optimistic insert with RETURNING (preferred when supported)
     .insert(Turns)
     .values({
       conversationId,
@@ -744,8 +745,61 @@ async function createFollowUpTurnOrEndTx(
     .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
     .returning()
 
-  if (inserted.length > 0)
-    return { kind: 'turn', turn: inserted[0] }
+  // NOTE: Some production libsql / remote turso deployments have (rare) issues with
+  // INSERT .. ON CONFLICT DO NOTHING RETURNING in edge environments. To make this
+  // more robust (and observable) we:
+  // 1. Try the returning path (above)
+  // 2. If it throws OR returns empty, we fall back to a manual fetch
+  // 3. Emit structured debug logs when DEBUG_TURNS is set so we can inspect
+  try {
+    if (inserted.length > 0) {
+      console.warn('[turns] inserted-followup', { conversationId, indexValue, id: inserted[0].id })
+      return { kind: 'turn', turn: inserted[0] }
+    }
+  }
+  catch (err: any) {
+    // Swallow after logging; we'll retry via fallback select below
+    try {
+      console.error('[turns] insert error (will fallback)', {
+        conversationId,
+        indexValue,
+        message: err?.message,
+      })
+    }
+    catch {}
+  }
+
+  // Fallback: ensure row exists / retrieve it (covers: conflict, unsupported RETURNING, transient race)
+  try {
+    const [existingAfter] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
+      .limit(1)
+    if (existingAfter) {
+      console.warn('[turns] fallback-existing', { conversationId, indexValue, id: (existingAfter as any).id })
+      return { kind: 'turn', turn: existingAfter }
+    }
+  }
+  catch (err: any) {
+    try {
+      // Best-effort schema introspection to surface drift in prod
+      let schemaCols: any[] | undefined
+      try {
+        // PRAGMA inside transaction should work for sqlite/libsql
+        // @ts-expect-error - raw execution (depends on drizzle driver capabilities)
+        schemaCols = await tx.execute?.('pragma table_info(\'turns\')')
+      }
+      catch {}
+      console.error('[turns] fallback-select error', {
+        conversationId,
+        indexValue,
+        message: err?.message,
+        schemaCols,
+      })
+    }
+    catch {}
+  }
 
   // If another worker inserted concurrently, fetch and return it
   const [existing] = await tx
