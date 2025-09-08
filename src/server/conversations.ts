@@ -1,7 +1,5 @@
-import type { ExtractTablesWithRelations, SQLWrapper } from 'drizzle-orm'
-import type { SQLiteTransaction } from 'drizzle-orm/sqlite-core'
-import type { Turn } from './db/schema'
-import type * as DBSchema from './db/schema'
+import type { SQLWrapper } from 'drizzle-orm'
+// Removed unused type imports (were for previous transactional helper)
 import type { Provider } from '~/lib/ai/lists'
 import process from 'node:process'
 import { action, query } from '@solidjs/router'
@@ -194,9 +192,9 @@ const answerQuestionSchema = z.object({
 export const answerQuestion = action(async (raw: { conversationId: string, turnId: string, value: string | number | boolean }) => {
   'use server'
   const { conversationId, turnId, value } = safeParseOrThrow(answerQuestionSchema, raw, 'conv:answer')
-  // Use a transaction so that if AI generation/validation fails,
-  // we roll back the turn update and allow retry without leaving the turn answered.
-  const result = await db.transaction(async (tx) => {
+
+  // Phase 1: minimal transaction to mark the answer
+  const phase1 = await db.transaction(async (tx) => {
     const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
     if (!conv)
       throw new Error('Conversation not found')
@@ -221,85 +219,149 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
       .set({ answerJson, status: 'answered', answeredAt: new Date() })
       .where(and(eq(Turns.id, turnId), eq(Turns.status, 'awaiting_answer')))
       .returning()
-
-    // Determine next step with stopping criteria
-    const answeredIndex = turn.index
-    const nextIndex = answeredIndex + 1
-
-    // Load form to read plan/stopping
-    const [form] = await tx.select().from(Forms).where(eq(Forms.id, conv.formId))
-    if (!form)
-      throw new Error('Form not found')
-
-    const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
-
-    // If someone else already answered in parallel, prefer returning any existing next turn without regenerating
-    if (updatedRows.length === 0) {
-      const [existingNext] = await tx
-        .select()
-        .from(Turns)
-        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
-        .limit(1)
-      if (existingNext)
-        return { nextTurn: existingNext }
-      // else continue and let follow-up generation handle on-conflict safely
+    return {
+      conv,
+      answeredIndex: turn.index,
+      updated: updatedRows.length > 0,
     }
-
-    // If asking one more would exceed hard limit, complete now
-    if (shouldHardStop(nextIndex)) {
-      const [updated] = await tx
-        .update(Conversations)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-          clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
-        } as any)
-        .where(eq(Conversations.id, conversationId))
-        .returning()
-      return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
-    }
-
-    // Before asking the LLM, check if a next turn is already present (from a parallel worker)
-    {
-      const [existingNext] = await tx
-        .select()
-        .from(Turns)
-        .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
-        .limit(1)
-      if (existingNext)
-        return { nextTurn: existingNext }
-    }
-
-    // Otherwise, ask the LLM for the next question or end signal
-    const followUp = await createFollowUpTurnOrEndTx(tx, conversationId, nextIndex)
-    if (followUp.kind === 'end') {
-      const [updated] = await tx
-        .update(Conversations)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-          clientMetaJson: mergeEndMeta(conv.clientMetaJson, { reason: followUp.reason, atTurn: answeredIndex, modelId: followUp.modelId }),
-        } as any)
-        .where(eq(Conversations.id, conversationId))
-        .returning()
-      return { completed: Boolean(updated), reason: followUp.reason }
-    }
-
-    return { nextTurn: followUp.turn }
   })
-  try {
-    if ((result as any)?.completed) {
-      const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
-      if (conv) {
-        const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+
+  const answeredIndex = phase1.answeredIndex
+  const nextIndex = answeredIndex + 1
+
+  // Load form fresh (outside txn)
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, phase1.conv.formId))
+  if (!form)
+    throw new Error('Form not found')
+  const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
+
+  // Hard stop check before any LLM call
+  if (shouldHardStop(nextIndex)) {
+    const [updated] = await db
+      .update(Conversations)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        clientMetaJson: mergeEndMeta(phase1.conv.clientMetaJson, { reason: 'hard_limit', atTurn: answeredIndex }),
+      } as any)
+      .where(and(eq(Conversations.id, conversationId), eq(Conversations.status, 'active')))
+      .returning()
+    if (updated) {
+      try {
         const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
         if (auto)
           await generateAndSaveConversationSummary(conversationId)
       }
+      catch {}
     }
+    return { completed: Boolean(updated), reason: 'hard_limit', maxQuestions }
   }
-  catch {}
-  return result
+
+  // See if next already exists (parallel answer) before LLM call
+  {
+    const [existingNext] = await db
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
+      .limit(1)
+    if (existingNext)
+      return { nextTurn: existingNext }
+  }
+
+  // Build history for LLM
+  const priorTurns = await db
+    .select()
+    .from(Turns)
+    .where(eq(Turns.conversationId, conversationId))
+    .orderBy(asc(Turns.index))
+
+  const history = priorTurns
+    .filter((t: any) => t.index <= nextIndex - 1)
+    .map((t: any) => ({
+      index: t.index,
+      question: t.questionJson ? { label: t.questionJson.label, type: t.questionJson.type } : undefined,
+      answer: t.answerJson ? (t.answerJson as any).value : undefined,
+    }))
+
+  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
+  const modelId = (form as any).aiConfigJson?.modelId as string | undefined
+  const prompt = (form as any).aiConfigJson?.prompt as string | undefined
+  const stopping = getStopping((form as any).settingsJson)
+  if (!provider || !modelId || !prompt)
+    throw new Error('AI not configured for this form')
+
+  await assertProviderAllowedForUser(provider, form.ownerUserId)
+
+  // LLM call (long-running) outside any transaction
+  const follow = await generateInterviewFollowUp({
+    provider,
+    modelId,
+    apiKeyEnc: form.aiProviderKeyEnc,
+    formGoalPrompt: prompt,
+    planSummary: form.settingsJson?.summary ?? undefined,
+    stopping,
+    indexValue: nextIndex,
+    priorCount: priorTurns.length,
+    history,
+  })
+
+  if (follow.kind === 'end') {
+    const [updated] = await db
+      .update(Conversations)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        clientMetaJson: mergeEndMeta(phase1.conv.clientMetaJson, { reason: follow.reason, atTurn: answeredIndex, modelId: follow.modelId }),
+      } as any)
+      .where(and(eq(Conversations.id, conversationId), eq(Conversations.status, 'active')))
+      .returning()
+    if (updated) {
+      try {
+        const auto = Boolean(((form as any)?.settingsJson as any)?.summaries?.autoResponse ?? false)
+        if (auto)
+          await generateAndSaveConversationSummary(conversationId)
+      }
+      catch {}
+    }
+    return { completed: Boolean(updated), reason: follow.reason }
+  }
+
+  // Insert next turn (short transaction for idempotency)
+  const inserted = await db.transaction(async (tx) => {
+    // Re-check if someone else inserted
+    const [existingNext] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
+      .limit(1)
+    if (existingNext)
+      return existingNext
+
+    const incoming = follow.question
+    const incomingId = (incoming && typeof incoming.id === 'string' && incoming.id.trim().length > 0) ? String(incoming.id).trim() : uuidV7Base58()
+    const question = { ...incoming, id: incomingId }
+    try {
+      const rows = await tx
+        .insert(Turns)
+        .values({ conversationId, index: nextIndex, questionJson: question, status: 'awaiting_answer' })
+        .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
+        .returning()
+      if (rows.length > 0)
+        return rows[0]
+    }
+    catch {}
+    const [after] = await tx
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, nextIndex)))
+      .limit(1)
+    if (after)
+      return after
+    return undefined as any
+  })
+  if (inserted)
+    return { nextTurn: inserted }
+  return { completed: false }
 }, 'conv:answer')
 
 const completeSchema = z.object({ conversationId: idSchema })
@@ -656,185 +718,7 @@ function parseMeta(meta: any): any {
   return (meta && typeof meta === 'object') ? meta : {}
 }
 
-async function createFollowUpTurnOrEndTx(
-  tx: SQLiteTransaction<'async', any, typeof DBSchema, ExtractTablesWithRelations<typeof DBSchema>>,
-  conversationId: string,
-  indexValue: number,
-): Promise<
-  | { kind: 'turn', turn: Turn }
-  | { kind: 'end', reason: Exclude<EndReason, 'hard_limit'>, modelId?: string }
-> {
-  const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
-  if (!conv)
-    throw new Error('Conversation not found')
-
-  const [form] = await tx.select().from(Forms).where(eq(Forms.id, conv.formId))
-  if (!form)
-    throw new Error('Form not found')
-
-  const priorTurns = await tx
-    .select()
-    .from(Turns)
-    .where(eq(Turns.conversationId, conversationId))
-    .orderBy(asc(Turns.index))
-
-  // Idempotency: if a turn at indexValue already exists, return it without regenerating
-  {
-    const [existingAtIndex] = await tx
-      .select()
-      .from(Turns)
-      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-      .limit(1)
-    if (existingAtIndex)
-      return { kind: 'turn', turn: existingAtIndex }
-  }
-
-  const history = priorTurns
-    .filter((t: any) => t.index <= indexValue - 1)
-    .map((t: any) => ({
-      index: t.index,
-      question: t.questionJson ? (t.questionJson as any) : undefined,
-      answer: t.answerJson ? (t.answerJson as any).value : undefined,
-    }))
-
-  const provider = (form as any).aiConfigJson?.provider as Provider | undefined
-  const modelId = (form as any).aiConfigJson?.modelId as string | undefined
-  const prompt = (form as any).aiConfigJson?.prompt as string | undefined
-
-  const stopping = getStopping((form as any).settingsJson)
-
-  if (!provider || !modelId || !prompt)
-    throw new Error('AI not configured for this form')
-
-  await assertProviderAllowedForUser(provider, form.ownerUserId)
-
-  const result = await generateInterviewFollowUp({
-    provider,
-    modelId,
-    apiKeyEnc: form.aiProviderKeyEnc,
-    formGoalPrompt: prompt,
-    planSummary: form.settingsJson?.summary ?? undefined,
-    stopping,
-    indexValue,
-    priorCount: priorTurns.length,
-    history: history.map(h => ({
-      index: h.index,
-      question: h.question ? { label: h.question.label, type: h.question.type } : undefined,
-      answer: h.answer,
-    })),
-  })
-
-  if (result.kind === 'end')
-    return { kind: 'end', reason: result.reason, modelId: result.modelId }
-
-  const incoming = result.question
-  const incomingId = (incoming && typeof incoming.id === 'string' && incoming.id.trim().length > 0) ? String(incoming.id).trim() : undefined
-  const question = {
-    ...incoming,
-    id: incomingId ?? uuidV7Base58(),
-  }
-  let inserted: any[] = []
-  let primaryInsertError: any | null = null
-  // Attempt optimistic insert WITH RETURNING first
-  try {
-    inserted = await tx
-      .insert(Turns)
-      .values({
-        conversationId,
-        index: indexValue,
-        questionJson: question,
-        status: 'awaiting_answer',
-      })
-      .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
-      .returning()
-    if (inserted.length > 0) {
-      console.log('[turns] inserted-followup', { conversationId, indexValue, id: inserted[0].id })
-      return { kind: 'turn', turn: inserted[0] }
-    }
-  }
-  catch (err: any) {
-    primaryInsertError = err
-    try {
-      console.log('[turns] insert error (RETURNING path) -> will fallback', {
-        conversationId,
-        indexValue,
-        message: err?.message,
-      })
-    }
-    catch {}
-  }
-
-  // If RETURNING path produced neither rows nor a recoverable row, attempt NON-RETURNING insert
-  if (inserted.length === 0) {
-    try {
-      await tx
-        .insert(Turns)
-        .values({
-          conversationId,
-          index: indexValue,
-          questionJson: question,
-          status: 'awaiting_answer',
-        })
-        .onConflictDoNothing({ target: [Turns.conversationId, Turns.index] })
-      console.log('[turns] fallback non-returning insert attempted', { conversationId, indexValue })
-    }
-    catch (err2: any) {
-      try {
-        console.log('[turns] non-returning insert error', {
-          conversationId,
-          indexValue,
-          primaryError: primaryInsertError?.message,
-          message: err2?.message,
-        })
-      }
-      catch {}
-    }
-  }
-
-  // Fallback: ensure row exists / retrieve it (covers: conflict, unsupported RETURNING, transient race)
-  try {
-    const [existingAfter] = await tx
-      .select()
-      .from(Turns)
-      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-      .limit(1)
-    if (existingAfter) {
-      console.log('[turns] fallback-existing', { conversationId, indexValue, id: (existingAfter as any).id })
-      return { kind: 'turn', turn: existingAfter }
-    }
-  }
-  catch (err: any) {
-    try {
-      // Best-effort schema introspection to surface drift in prod
-      let schemaCols: any[] | undefined
-      try {
-        // PRAGMA inside transaction should work for sqlite/libsql
-        // @ts-expect-error - raw execution (depends on drizzle driver capabilities)
-        schemaCols = await tx.execute?.('pragma table_info(\'turns\')')
-      }
-      catch {}
-      console.log('[turns] fallback-select error', {
-        conversationId,
-        indexValue,
-        message: err?.message,
-        schemaCols,
-      })
-    }
-    catch {}
-  }
-
-  // If another worker inserted concurrently, fetch and return it
-  const [existing] = await tx
-    .select()
-    .from(Turns)
-    .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, indexValue)))
-    .limit(1)
-  if (existing)
-    return { kind: 'turn', turn: existing }
-
-  // As a last resort, signal end to avoid looping; caller will re-check status
-  return { kind: 'end', reason: 'enough_info' }
-}
+// (createFollowUpTurnOrEndTx removed; logic inlined into answerQuestion)
 
 // Owner admin queries
 const listFormConversationsSchema = z.object({
