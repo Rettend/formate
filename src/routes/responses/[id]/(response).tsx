@@ -2,7 +2,8 @@ import { Protected } from '@rttnd/gau/client/solid'
 import { A, createAsync, revalidate, useAction, useNavigate, useParams } from '@solidjs/router'
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
-import { Button } from '~/components/ui/button'
+import { Button, buttonVariants } from '~/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { completeConversation, deleteConversation, generateConversationSummary, getConversationTranscript, listFormConversations, reopenConversation } from '~/server/conversations'
 import { getForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
@@ -37,6 +38,16 @@ function Transcript() {
   const optimisticStatus = () => override() ?? (data()?.conversation?.status === 'completed' ? 'completed' : 'active')
   const gen = useAction(generateConversationSummary)
   const [generating, setGenerating] = createSignal(false)
+  const [copyMenuOpen, setCopyMenuOpen] = createSignal(false)
+  let copyMenuCloseTimer: number | undefined
+  const openCopyMenu = () => {
+    clearTimeout(copyMenuCloseTimer)
+    setCopyMenuOpen(true)
+  }
+  const closeCopyMenuSoon = () => {
+    clearTimeout(copyMenuCloseTimer)
+    copyMenuCloseTimer = setTimeout(() => setCopyMenuOpen(false), 150) as unknown as number
+  }
   const handleGenerate = async () => {
     const id = conversationId()
     if (!id)
@@ -50,6 +61,8 @@ function Transcript() {
       setGenerating(false)
     }
   }
+  const formId = createMemo(() => data.latest?.conversation?.formId as string | undefined)
+  const form = createAsync(async () => (formId() ? getForm({ formId: formId() as string }) : null))
   const handleCopy = async () => {
     const bullets = data()?.conversation?.summaryBullets ?? []
     const text = bullets.map((b: string) => `- ${b}`).join('\n')
@@ -60,8 +73,48 @@ function Transcript() {
     }
     catch {}
   }
-  const formId = createMemo(() => data.latest?.conversation?.formId as string | undefined)
-  const form = createAsync(async () => (formId() ? getForm({ formId: formId() as string }) : null))
+  const handleCopyWithStats = async () => {
+    const bullets = data()?.conversation?.summaryBullets ?? []
+    if (!Array.isArray(bullets) || bullets.length === 0)
+      return
+    const status = (data()?.conversation?.status ?? '').toString()
+    const startedAt = (() => {
+      const d = data()?.conversation?.startedAt
+      return d ? new Date(d).toLocaleString() : ''
+    })()
+    const completedAt = (() => {
+      const d = data()?.conversation?.completedAt
+      return d ? new Date(d).toLocaleString() : ''
+    })()
+    const duration = (() => {
+      const s = data()?.conversation?.startedAt
+      const e = data()?.conversation?.completedAt
+      return s && e ? formatDuration(s, e) : ''
+    })()
+    const provider = form()?.aiConfigJson?.provider
+    const modelId = form()?.aiConfigJson?.modelId
+    const endReason = data()?.conversation?.endReason
+    const parts: string[] = []
+    if (status)
+      parts.push(`Status: ${status}`)
+    if (startedAt)
+      parts.push(`Started ${startedAt}`)
+    if (completedAt)
+      parts.push(`Completed ${completedAt}`)
+    if (duration)
+      parts.push(`Duration ${duration}`)
+    if (provider && modelId)
+      parts.push(`${provider} / ${modelId}`)
+    if (endReason)
+      parts.push(`End: ${endReason}`)
+    const header = parts.join(', ')
+    const body = bullets.map((b: string) => `- ${b}`).join('\n')
+    const text = `${header}\n\n${body}`
+    try {
+      await navigator.clipboard.writeText(text)
+    }
+    catch {}
+  }
   const remove = useAction(deleteConversation)
   const [confirming, setConfirming] = createSignal(false)
   const [confirmArmedAtMs, setConfirmArmedAtMs] = createSignal(0)
@@ -177,16 +230,30 @@ function Transcript() {
             <div class="mb-2 flex items-center justify-between">
               <h2 class="text-sm font-semibold">Summary</h2>
               <div class="flex items-center gap-2">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  title="Copy"
-                  aria-label="Copy"
-                  onClick={() => { void handleCopy() }}
-                  disabled={(data()?.conversation?.summaryBullets?.length ?? 0) === 0}
-                >
-                  <span class="i-ph:copy-bold size-4" />
-                </Button>
+                <DropdownMenu open={copyMenuOpen()} onOpenChange={setCopyMenuOpen} gutter={6}>
+                  <DropdownMenuTrigger
+                    disabled={(data()?.conversation?.summaryBullets?.length ?? 0) === 0}
+                    onPointerEnter={openCopyMenu}
+                    onPointerLeave={closeCopyMenuSoon}
+                    onPointerDown={(e) => { e.preventDefault() }}
+                    onClick={() => { void handleCopy() }}
+                    title="Copy"
+                    aria-label="Copy"
+                    class={buttonVariants({ variant: 'outline', size: 'icon' })}
+                  >
+                    <span class="i-ph:copy-bold size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    class="min-w-48 p-1"
+                    onPointerEnter={openCopyMenu}
+                    onPointerLeave={closeCopyMenuSoon}
+                  >
+                    <DropdownMenuItem onSelect={() => { void handleCopyWithStats() }}>
+                      <span class="i-ph:list-magnifying-glass-duotone size-4 opacity-80" />
+                      <span>Copy with stats</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button size="sm" variant="outline" onClick={() => { void handleGenerate() }} disabled={generating()}>
                   <span class={generating() ? 'i-svg-spinners:180-ring size-4' : 'i-ph:arrows-clockwise-bold size-4'} />
                   <span class="ml-1">{(data()?.conversation?.summaryBullets?.length ?? 0) > 0 ? 'Regenerate' : 'Generate'}</span>
