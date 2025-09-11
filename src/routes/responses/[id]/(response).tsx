@@ -3,7 +3,7 @@ import { A, createAsync, revalidate, useAction, useNavigate, useParams } from '@
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { AppShell } from '~/components/AppShell'
 import { Button } from '~/components/ui/button'
-import { deleteConversation, generateConversationSummary, getConversationTranscript, listFormConversations } from '~/server/conversations'
+import { completeConversation, deleteConversation, generateConversationSummary, getConversationTranscript, listFormConversations, reopenConversation } from '~/server/conversations'
 import { getForm } from '~/server/forms'
 import { useUIStore } from '~/stores/ui'
 
@@ -31,6 +31,8 @@ function Transcript() {
   const nav = useNavigate()
   const conversationId = createMemo(() => params.id)
   const data = createAsync(() => getConversationTranscript({ conversationId: conversationId() }))
+  const markComplete = useAction(completeConversation)
+  const reopen = useAction(reopenConversation)
   const gen = useAction(generateConversationSummary)
   const [generating, setGenerating] = createSignal(false)
   const handleGenerate = async () => {
@@ -89,6 +91,22 @@ function Transcript() {
 
   onCleanup(() => clearTimeout(confirmTimer))
 
+  const handleMarkCompleted = async () => {
+    const id = conversationId()
+    if (!id)
+      return
+    await markComplete({ conversationId: id })
+    await revalidate([getConversationTranscript.key])
+  }
+
+  const handleReopen = async () => {
+    const id = conversationId()
+    if (!id)
+      return
+    await reopen({ conversationId: id })
+    await revalidate([getConversationTranscript.key])
+  }
+
   return (
     <AppShell>
       <section>
@@ -109,6 +127,30 @@ function Transcript() {
               <span class="i-ph:arrow-left-bold" />
               <span>Back to responses</span>
             </A>
+            <Show when={data()?.conversation?.status !== 'completed'}>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Mark completed"
+                aria-label="Mark completed"
+                class="hover:bg-transparent"
+                onClick={() => { void handleMarkCompleted() }}
+              >
+                <span class="i-ph:check-bold size-4" />
+              </Button>
+            </Show>
+            <Show when={data()?.conversation?.status === 'completed'}>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Reopen"
+                aria-label="Reopen"
+                class="hover:bg-transparent"
+                onClick={() => { void handleReopen() }}
+              >
+                <span class="i-ph:arrow-counter-clockwise-bold size-4" />
+              </Button>
+            </Show>
             <Button
               variant="ghost"
               size="icon"
@@ -157,16 +199,22 @@ function Transcript() {
           <div class="mb-4 text-xs text-muted-foreground">
             <span>Status: {data()?.conversation?.status}</span>
             <span class="mx-2 opacity-60">•</span>
-            <span>Started {(() => {
-              const d = data()?.conversation?.startedAt
-              return d ? new Date(d).toLocaleString() : '—'
-            })()}</span>
+            <span>
+              Started
+              {(() => {
+                const d = data()?.conversation?.startedAt
+                return d ? new Date(d).toLocaleString() : '—'
+              })()}
+            </span>
             <Show when={data()?.conversation?.completedAt}>
               <span class="mx-2 opacity-60">•</span>
-              <span>Completed {(() => {
-                const d = data()?.conversation?.completedAt
-                return d ? new Date(d).toLocaleString() : '—'
-              })()}</span>
+              <span>
+                Completed
+                {(() => {
+                  const d = data()?.conversation?.completedAt
+                  return d ? new Date(d).toLocaleString() : '—'
+                })()}
+              </span>
               <span class="mx-2 opacity-60">•</span>
               <span>Duration {formatDuration(data()?.conversation?.startedAt, data()?.conversation?.completedAt)}</span>
             </Show>

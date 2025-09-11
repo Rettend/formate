@@ -4,7 +4,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import { AppShell } from '~/components/AppShell'
 import { FormFilterBadge } from '~/components/FormFilterBadge'
 import { Button } from '~/components/ui/button'
-import { deleteConversation, listFormConversations, listOwnerConversations } from '~/server/conversations'
+import { completeConversation, deleteConversation, listFormConversations, listOwnerConversations, reopenConversation } from '~/server/conversations'
 import { useUIStore } from '~/stores/ui'
 
 export default Protected(() => <ResponsesPage />, '/')
@@ -31,6 +31,8 @@ function ResponsesPage() {
       void revalidate([listOwnerConversations.key])
   })
   const doDelete = useAction(deleteConversation)
+  const doComplete = useAction(completeConversation)
+  const doReopen = useAction(reopenConversation)
   const [confirmingId, setConfirmingId] = createSignal<string | null>(null)
   const [confirmArmedAtMs, setConfirmArmedAtMs] = createSignal<number>(0)
   let confirmTimer: number | undefined
@@ -55,6 +57,22 @@ function ResponsesPage() {
   }
 
   onCleanup(() => clearTimeout(confirmTimer))
+
+  const handleComplete = async (id: string) => {
+    await doComplete({ conversationId: id })
+    if (formId())
+      await revalidate([listFormConversations.key])
+    else
+      await revalidate([listOwnerConversations.key])
+  }
+
+  const handleReopen = async (id: string) => {
+    await doReopen({ conversationId: id })
+    if (formId())
+      await revalidate([listFormConversations.key])
+    else
+      await revalidate([listOwnerConversations.key])
+  }
 
   return (
     <AppShell>
@@ -141,6 +159,30 @@ function ResponsesPage() {
                       </div>
                     </div>
                     <div class="flex shrink-0 items-center gap-3">
+                      <Show when={it.status !== 'completed'}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Mark completed"
+                          aria-label="Mark completed"
+                          class="hover:bg-transparent"
+                          onClick={() => { void handleComplete(it.id) }}
+                        >
+                          <span class="i-ph:check-bold size-4" />
+                        </Button>
+                      </Show>
+                      <Show when={it.status === 'completed'}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reopen"
+                          aria-label="Reopen"
+                          class="hover:bg-transparent"
+                          onClick={() => { void handleReopen(it.id) }}
+                        >
+                          <span class="i-ph:arrow-counter-clockwise-bold size-4" />
+                        </Button>
+                      </Show>
                       <Button
                         variant="ghost"
                         size="icon"

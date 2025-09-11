@@ -374,13 +374,24 @@ export const completeConversation = action(async (raw: { conversationId: string,
   'use server'
   const { conversationId, turnId, value } = safeParseOrThrow(completeSchema, raw, 'conv:complete')
 
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const sessionUserId = session?.user?.id
+
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
     throw new Response('Conversation not found', { status: 404 })
-  const { userId, inviteJti } = await getIdentityForForm(conv.formId)
-  const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
-  if (!ok)
-    throw new Response('Forbidden', { status: 403 })
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  if (!form)
+    throw new Response('Form not found', { status: 404 })
+  // Owner may complete any conversation of their form; otherwise, must be the respondent
+  const isOwner = Boolean(sessionUserId && form.ownerUserId === sessionUserId)
+  if (!isOwner) {
+    const { userId, inviteJti } = await getIdentityForForm(conv.formId)
+    const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
+    if (!ok)
+      throw new Response('Forbidden', { status: 403 })
+  }
 
   // If a pending answer was provided for the active turn, persist it without generating a follow-up
   if (turnId && typeof value !== 'undefined') {
@@ -407,7 +418,6 @@ export const completeConversation = action(async (raw: { conversationId: string,
     .returning()
 
   try {
-    const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
     const auto = Boolean(form?.settingsJson?.summaries?.autoResponse ?? false)
     if (auto)
       await generateAndSaveConversationSummary(conversationId)
@@ -650,6 +660,71 @@ export const deleteConversation = action(async (raw: { conversationId: string })
 
   return { ok: true }
 }, 'conv:delete')
+
+// Owner-only: reopen a conversation without stepping back (non-destructive)
+export const reopenConversation = action(async (raw: { conversationId: string }) => {
+  'use server'
+  const event = getRequestEvent()
+  const session = await event?.locals.getSession()
+  const userId = ensure(session?.user?.id, 'Unauthorized')
+  const { conversationId } = safeParseOrThrow(rewindSchema, raw, 'conv:reopen')
+
+  // Load conversation and form to check ownership
+  const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
+  if (!conv)
+    throw new Response('Conversation not found', { status: 404 })
+  const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
+  if (!form)
+    throw new Response('Form not found', { status: 404 })
+  if (form.ownerUserId !== userId)
+    throw new Response('Forbidden', { status: 403 })
+
+  const turns = await db
+    .select()
+    .from(Turns)
+    .where(eq(Turns.conversationId, conversationId))
+    .orderBy(asc(Turns.index))
+
+  const active = turns.find(t => t.status === 'awaiting_answer')
+  if (active) {
+    // Just clear completion and keep current active question
+    await db
+      .update(Conversations)
+      .set({ status: 'active', completedAt: null })
+      .where(eq(Conversations.id, conversationId))
+    return { ok: true, activeTurnId: active.id }
+  }
+
+  if (turns.length === 0) {
+    // Ensure there is at least the seed turn
+    await db
+      .update(Conversations)
+      .set({ status: 'active', completedAt: null })
+      .where(eq(Conversations.id, conversationId))
+    await ensureFirstTurn(conversationId, conv.formId)
+    const first = await db
+      .select()
+      .from(Turns)
+      .where(and(eq(Turns.conversationId, conversationId), eq(Turns.index, 0)))
+      .limit(1)
+    return { ok: true, firstTurnId: first[0]?.id }
+  }
+
+  // No active turn: reopen the last answered to continue
+  const last = turns[turns.length - 1]
+  const [updatedLast] = await db
+    .update(Turns)
+    .set({ status: 'awaiting_answer', answerJson: null, answeredAt: null })
+    .where(eq(Turns.id, last.id))
+    .returning()
+
+  await db
+    .update(Conversations)
+    .set({ status: 'active', completedAt: null })
+    .where(eq(Conversations.id, conversationId))
+
+  return { ok: true, reopenedTurnId: updatedLast?.id }
+}, 'conv:reopen')
 
 // Helpers
 async function ensureFirstTurn(conversationId: string, formId: string) {
