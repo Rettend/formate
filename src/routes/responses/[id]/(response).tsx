@@ -33,6 +33,8 @@ function Transcript() {
   const data = createAsync(() => getConversationTranscript({ conversationId: conversationId() }))
   const markComplete = useAction(completeConversation)
   const reopen = useAction(reopenConversation)
+  const [override, setOverride] = createSignal<'active' | 'completed' | null>(null)
+  const optimisticStatus = () => override() ?? (data()?.conversation?.status === 'completed' ? 'completed' : 'active')
   const gen = useAction(generateConversationSummary)
   const [generating, setGenerating] = createSignal(false)
   const handleGenerate = async () => {
@@ -95,16 +97,20 @@ function Transcript() {
     const id = conversationId()
     if (!id)
       return
+    setOverride('completed')
     await markComplete({ conversationId: id })
     await revalidate([getConversationTranscript.key])
+    setOverride(null)
   }
 
   const handleReopen = async () => {
     const id = conversationId()
     if (!id)
       return
+    setOverride('active')
     await reopen({ conversationId: id })
     await revalidate([getConversationTranscript.key])
+    setOverride(null)
   }
 
   return (
@@ -127,25 +133,27 @@ function Transcript() {
               <span class="i-ph:arrow-left-bold" />
               <span>Back to responses</span>
             </A>
-            <Show when={data()?.conversation?.status !== 'completed'}>
+            <Show when={optimisticStatus() !== 'completed'}>
               <Button
                 variant="ghost"
                 size="icon"
                 title="Mark completed"
                 aria-label="Mark completed"
                 class="hover:bg-transparent"
+
                 onClick={() => { void handleMarkCompleted() }}
               >
                 <span class="i-ph:check-bold size-4" />
               </Button>
             </Show>
-            <Show when={data()?.conversation?.status === 'completed'}>
+            <Show when={optimisticStatus() === 'completed'}>
               <Button
                 variant="ghost"
                 size="icon"
                 title="Reopen"
                 aria-label="Reopen"
                 class="hover:bg-transparent"
+
                 onClick={() => { void handleReopen() }}
               >
                 <span class="i-ph:arrow-counter-clockwise-bold size-4" />

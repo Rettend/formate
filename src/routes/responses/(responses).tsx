@@ -33,6 +33,10 @@ function ResponsesPage() {
   const doDelete = useAction(deleteConversation)
   const doComplete = useAction(completeConversation)
   const doReopen = useAction(reopenConversation)
+
+  // Optimistic state: simple sticky override per id
+  const [optimisticOverrides, setOptimisticOverrides] = createSignal<Record<string, 'active' | 'completed'>>({})
+  const optimisticStatus = (id: string, base: string) => optimisticOverrides()[id] ?? (base === 'completed' ? 'completed' : 'active')
   const [confirmingId, setConfirmingId] = createSignal<string | null>(null)
   const [confirmArmedAtMs, setConfirmArmedAtMs] = createSignal<number>(0)
   let confirmTimer: number | undefined
@@ -59,6 +63,8 @@ function ResponsesPage() {
   onCleanup(() => clearTimeout(confirmTimer))
 
   const handleComplete = async (id: string) => {
+    // Set local override to avoid flicker until revalidate completes
+    setOptimisticOverrides(prev => ({ ...prev, [id]: 'completed' }))
     await doComplete({ conversationId: id })
     if (formId())
       await revalidate([listFormConversations.key])
@@ -67,6 +73,7 @@ function ResponsesPage() {
   }
 
   const handleReopen = async (id: string) => {
+    setOptimisticOverrides(prev => ({ ...prev, [id]: 'active' }))
     await doReopen({ conversationId: id })
     if (formId())
       await revalidate([listFormConversations.key])
@@ -159,7 +166,7 @@ function ResponsesPage() {
                       </div>
                     </div>
                     <div class="flex shrink-0 items-center gap-3">
-                      <Show when={it.status !== 'completed'}>
+                      <Show when={optimisticStatus(it.id, it.status) !== 'completed'}>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -171,7 +178,7 @@ function ResponsesPage() {
                           <span class="i-ph:check-bold size-4" />
                         </Button>
                       </Show>
-                      <Show when={it.status === 'completed'}>
+                      <Show when={optimisticStatus(it.id, it.status) === 'completed'}>
                         <Button
                           variant="ghost"
                           size="icon"
