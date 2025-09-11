@@ -5,7 +5,7 @@ import { Users } from './db/schema'
 
 function assertAzureConfigured() {
   if (!serverEnv.AZURE_API_KEY || !serverEnv.AZURE_RESOURCE_NAME)
-    throw new Error('Formate provider is not configured on the server.')
+    throw new Response('Formate provider is not configured on the server.', { status: 500 })
 }
 
 export async function assertProviderAllowedForUser(provider: string, userId: string): Promise<void> {
@@ -19,5 +19,5 @@ export async function assertProviderAllowedForUser(provider: string, userId: str
     .limit(1)
   const premium = Boolean(me?.isPremium)
   if (!premium)
-    throw new Error('Formate provider is available to premium accounts only.')
+    throw new Response('Formate provider is available to premium accounts only.', { status: 403 })
 }

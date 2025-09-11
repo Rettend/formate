@@ -38,7 +38,7 @@ export const listForms = query(async (raw: ListFormsInput = {}) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(listFormsSchema, raw, 'forms:list')
 
@@ -70,7 +70,7 @@ export const getForm = query(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(getFormSchema, raw, 'forms:get')
 
@@ -98,7 +98,7 @@ export const createForm = action(async (raw: { title?: string, slug?: string }) 
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(createFormSchema, raw, 'forms:create')
   const slugSanitized = input.slug
@@ -127,7 +127,7 @@ export const saveFormSlug = action(async (raw: { formId: string, slug: string })
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(saveFormSchema, raw, 'forms:saveSlug')
   const slugSanitized = input.slug
@@ -147,7 +147,7 @@ export const saveFormSlug = action(async (raw: { formId: string, slug: string })
     .returning()
 
   if (!updated)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   return updated
 }, 'forms:saveSlug')
 const updateFormSchema = z.object({
@@ -162,7 +162,7 @@ export const updateForm = action(async (raw: { formId: string, patch: { title?: 
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const { formId, patch } = safeParseOrThrow(updateFormSchema, raw, 'forms:update')
   const updates: Partial<typeof Forms.$inferInsert> = {}
@@ -177,7 +177,7 @@ export const updateForm = action(async (raw: { formId: string, patch: { title?: 
     .returning()
 
   if (!updated)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   return updated
 }, 'forms:update')
 
@@ -188,7 +188,7 @@ export const publishForm = action(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:publish')
 
@@ -199,7 +199,7 @@ export const publishForm = action(async (raw: { formId: string }) => {
     .returning({ id: Forms.id, status: Forms.status })
 
   if (!updated)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   return updated
 }, 'forms:publish')
 
@@ -208,7 +208,7 @@ export const unpublishForm = action(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:unpublish')
 
@@ -219,7 +219,7 @@ export const unpublishForm = action(async (raw: { formId: string }) => {
     .returning({ id: Forms.id, status: Forms.status })
 
   if (!updated)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   return updated
 }, 'forms:unpublish')
 
@@ -285,7 +285,7 @@ export const deleteForm = action(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(formIdOnlySchema, raw, 'forms:delete')
 
@@ -303,7 +303,7 @@ export const duplicateForm = action(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const { formId } = safeParseOrThrow(duplicateFormSchema, raw, 'forms:duplicate')
 
@@ -313,7 +313,7 @@ export const duplicateForm = action(async (raw: { formId: string }) => {
     .from(Forms)
     .where(and(eq(Forms.id, formId), eq(Forms.ownerUserId, session.user.id)))
   if (!orig)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const newTitle = `${orig.title || 'Untitled Form'} (copy)`
 
@@ -348,7 +348,7 @@ export const saveFormPrompt = action(async (raw: { formId: string, prompt: strin
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(savePromptSchema, raw, 'forms:savePrompt')
 
   await assertProviderAllowedForUser(input.provider, session.user.id)
@@ -359,7 +359,7 @@ export const saveFormPrompt = action(async (raw: { formId: string, prompt: strin
     .where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
     .returning()
   if (!updated)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   return { ok: true }
 }, 'forms:savePrompt')
 
@@ -371,17 +371,17 @@ export const saveFormProviderKey = action(async (raw: { formId: string, apiKey: 
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(saveProviderKeySchema, raw, 'forms:saveProviderKey')
 
   // ensure ownership
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const provider: string | undefined = form.aiConfigJson?.provider
   if (provider === 'formate')
-    throw new Error('Formate provider uses a server-managed key. No per-form key is needed.')
+    throw new Response('Formate provider uses a server-managed key. No per-form key is needed.', { status: 400 })
 
   const enc = await encryptSecret(input.apiKey)
   const [updated] = await db
@@ -397,12 +397,12 @@ export const clearFormProviderKey = action(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(clearProviderKeySchema, raw, 'forms:clearProviderKey')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const [updated] = await db
     .update(Forms)
@@ -426,13 +426,13 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(planWithAISchema, raw, 'forms:planWithAI')
 
   // Ensure ownership
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   await assertProviderAllowedForUser(input.provider, session.user.id)
 
@@ -444,7 +444,7 @@ export const planWithAI = action(async (raw: { formId: string, prompt: string, p
   }
   catch (err) {
     logAIError(err, 'planWithAI')
-    throw new Error(aiErrorToMessage(err))
+    throw new Response(aiErrorToMessage(err), { status: 400 })
   }
 
   const existing = (form as any).settingsJson ?? {}
@@ -476,14 +476,14 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(testRunSchema, raw, 'forms:testRun')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   if (!form.settingsJson)
-    throw new Error('No plan applied yet')
+    throw new Response('No plan applied yet', { status: 400 })
 
   await assertProviderAllowedForUser(input.provider, session.user.id)
 
@@ -496,7 +496,7 @@ export const createTestRun = action(async (raw: { formId: string, maxSteps?: num
   }
   catch (err) {
     logAIError(err, 'testRun')
-    throw new Error(aiErrorToMessage(err))
+    throw new Response(aiErrorToMessage(err), { status: 400 })
   }
   const safeTranscript = testRunTranscriptSchema.parse(transcript)
 
@@ -525,20 +525,20 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(testStepSchema, raw, 'forms:testStep')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   if (!form.settingsJson)
-    throw new Error('No plan applied yet')
+    throw new Response('No plan applied yet', { status: 400 })
 
   await assertProviderAllowedForUser(input.provider, session.user.id)
 
   const plan = formPlanSchema.parse(form.settingsJson)
   if (input.index !== 0)
-    throw new Error('Index out of range')
+    throw new Response('Index out of range', { status: 400 })
 
   const { simulateTestStep } = await import('~/lib/ai/form-planner')
   let step
@@ -547,7 +547,7 @@ export const runTestStep = action(async (raw: { formId: string, index: number, p
   }
   catch (err) {
     logAIError(err, 'testStep')
-    throw new Error(aiErrorToMessage(err))
+    throw new Response(aiErrorToMessage(err), { status: 400 })
   }
   return { step, total: 1 }
 }, 'forms:testStep')
@@ -564,13 +564,13 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(z.object({ formId: idSchema, stopping: stoppingSchema }), raw, 'forms:saveStopping')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const existing = (form.settingsJson as any) ?? {}
   const prevStopping = existing.stopping || {}
@@ -583,7 +583,7 @@ export const saveFormStopping = action(async (raw: { formId: string, stopping: z
     .where(eq(Forms.id, input.formId))
     .returning()
   if (!updated)
-    throw new Error('Update failed')
+    throw new Response('Update failed', { status: 500 })
   return { ok: true }
 }, 'forms:saveStopping')
 
@@ -594,13 +594,13 @@ export const saveFormSummaries = action(async (raw: { formId: string, summaries:
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(z.object({ formId: idSchema, summaries: summariesSchema }), raw, 'forms:saveSummaries')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const existing = form.settingsJson ?? {}
   const prev = (existing as any).summaries || {}
@@ -627,13 +627,13 @@ export const saveFormAccess = action(async (raw: { formId: string, access: z.inf
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(z.object({ formId: idSchema, access: accessSchema }), raw, 'forms:saveAccess')
 
   const [form] = await db.select().from(Forms).where(and(eq(Forms.id, input.formId), eq(Forms.ownerUserId, session.user.id)))
   if (!form)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
 
   const existing = form.settingsJson ?? {}
   const prevAccess = (existing as any).access || {}

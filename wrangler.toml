@@ -10,4 +10,4 @@ binding = "ASSETS"
 directory = ".output/public"
 
 [observability.logs]
-enabled = true
+enabled = false

@@ -11,8 +11,10 @@ import { db } from './db'
 import { Forms, Invites } from './db/schema'
 
 function ensureOwner(form: { ownerUserId: string }, userId?: string) {
-  if (!userId || form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+  if (!userId)
+    throw new Response('Unauthorized', { status: 401 })
+  if (form.ownerUserId !== userId)
+    throw new Response('Forbidden', { status: 403 })
 }
 
 interface InviteEntryInput { label?: string | null, ttlMinutes?: number }
@@ -39,7 +41,7 @@ export const createInviteTokens = action(async (raw: { formId: string, count?: n
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   ensureOwner(form, userId)
 
   const ttlSec = (input.ttlMinutes ?? 60 * 24 * 7) * 60
@@ -80,7 +82,7 @@ export const listUsedInviteTokens = query(async (raw: { formIds?: string[] } = {
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const owned = await db
     .select({ id: Forms.id, title: Forms.title, slug: Forms.slug })
@@ -120,21 +122,21 @@ export const redeemInvite = action(async (raw: { code: string }) => {
   // Lookup by short code
   const [inv] = await db.select().from(Invites).where(eq(Invites.shortCode, input.code))
   if (!inv)
-    throw new Error('Invalid invite')
+    throw new Response('Invalid invite', { status: 400 })
   const formId = (inv as any).formId as string
   const jti = (inv as any).jti as string
   const revokedAt = (inv as any).revokedAt as Date | null
   if ((inv as any).usedAt)
-    throw new Error('Invite already used')
+    throw new Response('Invite already used', { status: 409 })
   if (revokedAt)
-    throw new Error('Invite revoked')
+    throw new Response('Invite revoked', { status: 409 })
   const exp = ((inv as any).expAt as Date | undefined) ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
   if (exp && exp.getTime() < Date.now())
-    throw new Error('Invite expired')
+    throw new Response('Invite expired', { status: 409 })
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId!))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
 
   const session = await event?.locals.getSession()
   const usedByUserId = session?.user?.id ?? null
@@ -164,7 +166,7 @@ export const resolveInviteCode = query(async (raw: { code: string }) => {
   const { code } = safeParseOrThrow(z.object({ code: z.string().min(6).max(24) }), raw, 'invites:resolve')
   const [inv] = await db.select().from(Invites).where(eq(Invites.shortCode, code))
   if (!inv)
-    throw new Error('Not found')
+    throw new Response('Not found', { status: 404 })
   const formId = (inv as any).formId as string
   const [form] = await db.select({ slug: Forms.slug }).from(Forms).where(eq(Forms.id, formId))
   return { formId, slug: (form as any)?.slug as string | undefined }
@@ -176,7 +178,7 @@ export const listInvitesByForm = query(async (raw?: { formId?: string | null }) 
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = (raw && typeof raw === 'object') ? raw : {}
   const singleFormId = (typeof input.formId === 'string' && input.formId.trim().length > 0) ? input.formId.trim() : null
@@ -235,18 +237,18 @@ export const revokeInvite = action(async (raw: { jti: string }) => {
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const [inv] = await db.select().from(Invites).where(eq(Invites.jti, jti))
   if (!inv)
-    throw new Error('Invite not found')
+    throw new Response('Invite not found', { status: 404 })
   const formId = (inv as any).formId as string
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   ensureOwner(form, userId)
   if ((inv as any).usedAt)
-    throw new Error('Cannot revoke a used invite')
+    throw new Response('Cannot revoke a used invite', { status: 409 })
   if ((inv as any).revokedAt)
     return { ok: true }
 
@@ -261,15 +263,15 @@ export const updateInviteLabel = action(async (raw: { jti: string, label?: strin
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const [inv] = await db.select().from(Invites).where(eq(Invites.jti, jti))
   if (!inv)
-    throw new Error('Invite not found')
+    throw new Response('Invite not found', { status: 404 })
   const formId = (inv as any).formId as string
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   ensureOwner(form, userId)
 
   await db.update(Invites).set({ label: (label ?? null) as any }).where(eq(Invites.jti, jti))

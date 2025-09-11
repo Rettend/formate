@@ -22,20 +22,20 @@ export const generateFormSummary = action(async (raw: { formId: string, range: '
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const input = safeParseOrThrow(z.object({ formId: idSchema, range: rangeSchema }), raw, 'analytics:generateFormSummary')
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== session.user.id)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   const provider = form.aiConfigJson?.provider
   const modelId = form.aiConfigJson?.modelId
   const prompt = form.aiConfigJson?.prompt
   if (!provider || !modelId || !prompt)
-    throw new Error('AI not configured for this form')
+    throw new Response('AI not configured for this form', { status: 400 })
   await assertProviderAllowedForUser(provider, session.user.id)
 
   const { start, end } = rangeToDates(input.range)
@@ -98,14 +98,14 @@ export const getFormSummary = query(async (raw: { formId: string }) => {
   const event = getRequestEvent()
   const session = await event?.locals.getSession()
   if (!session?.user?.id)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   const { formId } = safeParseOrThrow(z.object({ formId: idSchema }), raw, 'analytics:getFormSummary')
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== session.user.id)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   const [row] = await db.select().from(Summaries).where(and(eq(Summaries.kind, 'form'), eq(Summaries.formId, formId))).limit(1)
   return { bullets: row?.bulletsJson ?? [] }
@@ -127,7 +127,7 @@ export const getDashboardStats = query(async (raw?: { formId?: string | null }) 
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const formId = raw?.formId ?? null
 
@@ -167,7 +167,7 @@ export const listRecentCompletions = query(async (raw?: { limit?: number, formId
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const paged = typeof raw?.page === 'number' || typeof raw?.pageSize === 'number'
   const limit = Math.max(1, Math.min(50, Number(raw?.limit ?? 10)))
@@ -261,7 +261,7 @@ export const getCompletionTimeSeries = query(async (raw?: { range?: '7d' | '30d'
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)
@@ -299,7 +299,7 @@ export const getFunnelStats = query(async (raw?: { range?: '7d' | '30d' | '90d',
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)
@@ -331,7 +331,7 @@ export const getFormBreakdown = query(async (raw?: { range?: '7d' | '30d' | '90d
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const range = rangeSchemaTime.parse(raw?.range ?? '7d')
   const since = rangeToSince(range)

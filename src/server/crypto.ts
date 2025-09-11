@@ -11,7 +11,7 @@ async function getKey(): Promise<CryptoKey> {
 
 export async function encryptSecret(plain: string): Promise<string> {
   if (!plain)
-    throw new Error('Nothing to encrypt')
+    throw new Response('Nothing to encrypt', { status: 400 })
   const key = await getKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, TEXT.encode(plain))
@@ -27,7 +27,7 @@ export async function encryptSecret(plain: string): Promise<string> {
 
 export async function decryptSecret(ciphertextB64: string): Promise<string> {
   if (!ciphertextB64)
-    throw new Error('Nothing to decrypt')
+    throw new Response('Nothing to decrypt', { status: 400 })
   const key = await getKey()
   const bytes = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0))
   const iv = bytes.slice(0, 12)

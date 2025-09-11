@@ -67,7 +67,7 @@ async function getIdentityForForm(formId?: string): Promise<Identity> {
 async function requireSomeIdentity(formId?: string): Promise<Identity> {
   const id = await getIdentityForForm(formId)
   if (!id.userId && !id.inviteJti)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
   return id
 }
 
@@ -81,11 +81,11 @@ export const getOrCreateConversation = action(async (raw: { formId: string }) =>
   // Ensure form exists and is public+published
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   // Allow owner to start a conversation even if not published; non-owners require published
   const isOwner = userId && form.ownerUserId === userId
   if (!isOwner && form.status !== 'published')
-    throw new Error('Form is not published')
+    throw new Response('Forbidden', { status: 403 })
 
   // Find existing: prefer invite identity if present to avoid mixing with logged-in owner/user sessions
   let existing: any[] = []
@@ -157,7 +157,7 @@ export const listTurns = query(async (raw: { conversationId: string }) => {
   const { userId, inviteJti } = await getIdentityForForm(conv.formId)
   const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
   if (!ok)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
 
@@ -197,21 +197,21 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   const phase1 = await db.transaction(async (tx) => {
     const [conv] = await tx.select().from(Conversations).where(eq(Conversations.id, conversationId))
     if (!conv)
-      throw new Error('Conversation not found')
+      throw new Response('Conversation not found', { status: 404 })
     const { userId, inviteJti } = await getIdentityForForm(conv.formId)
     const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
     if (!ok)
-      throw new Error('Forbidden')
+      throw new Response('Forbidden', { status: 403 })
     if (conv.status !== 'active')
-      throw new Error('Conversation not active')
+      throw new Response('Conversation not active', { status: 409 })
 
     const [turn] = await tx.select().from(Turns).where(eq(Turns.id, turnId))
     if (!turn)
-      throw new Error('Turn not found')
+      throw new Response('Turn not found', { status: 404 })
     if (turn.conversationId !== conversationId)
-      throw new Error('Invalid turn')
+      throw new Response('Invalid turn', { status: 400 })
     if (turn.status !== 'awaiting_answer')
-      throw new Error('Turn already answered')
+      throw new Response('Turn already answered', { status: 409 })
 
     const answerJson = { value, providedAt: new Date().toISOString() }
     const updatedRows = await tx
@@ -232,7 +232,7 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   // Load form fresh (outside txn)
   const [form] = await db.select().from(Forms).where(eq(Forms.id, phase1.conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   const { shouldHardStop, maxQuestions } = getHardLimitInfo(form)
 
   // Hard stop check before any LLM call
@@ -288,7 +288,7 @@ export const answerQuestion = action(async (raw: { conversationId: string, turnI
   const prompt = form.aiConfigJson?.prompt as string | undefined
   const stopping = getStopping(form.settingsJson)
   if (!provider || !modelId || !prompt)
-    throw new Error('AI not configured for this form')
+    throw new Response('AI not configured for this form', { status: 400 })
 
   await assertProviderAllowedForUser(provider, form.ownerUserId)
 
@@ -376,11 +376,11 @@ export const completeConversation = action(async (raw: { conversationId: string,
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const { userId, inviteJti } = await getIdentityForForm(conv.formId)
   const ok = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
   if (!ok)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   // If a pending answer was provided for the active turn, persist it without generating a follow-up
   if (turnId && typeof value !== 'undefined') {
@@ -389,7 +389,7 @@ export const completeConversation = action(async (raw: { conversationId: string,
       if (!turn)
         return
       if (turn.conversationId !== conversationId)
-        throw new Error('Invalid turn')
+        throw new Response('Invalid turn', { status: 400 })
       if (turn.status !== 'awaiting_answer')
         return
       const answerJson = { value, providedAt: new Date().toISOString() }
@@ -429,12 +429,12 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
   // Load conversation and form to check ownership
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   // Fetch turns ordered by index
   const turns = await db
@@ -447,11 +447,11 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
   if (active) {
     // Normal case: step back from an active turn to the previous one
     if (active.index <= 0)
-      throw new Error('No previous question')
+      throw new Response('No previous question', { status: 400 })
 
     const prev = turns.find(t => t.index === active.index - 1)
     if (!prev)
-      throw new Error('Previous question not found')
+      throw new Response('Previous question not found', { status: 404 })
 
     // Capture previous answer value before clearing
     const prevAnswerValue = prev?.answerJson?.value
@@ -479,7 +479,7 @@ export const rewindOneStep = action(async (raw: { conversationId: string }) => {
 
   // Completed (or no active) case: reopen the last answered turn
   if (turns.length === 0)
-    throw new Error('No questions to rewind')
+    throw new Response('No questions to rewind', { status: 400 })
 
   const last = turns[turns.length - 1]
   const lastAnswerValue = last?.answerJson?.value
@@ -506,25 +506,25 @@ export const respondentRewind = action(async (raw: { conversationId: string }) =
   // Load conversation and associated form
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
 
   // Auth: respondent must match either the logged-in user or invite cookie for this form
   const { userId, inviteJti } = await getIdentityForForm(conv.formId)
   const isOwner = Boolean(userId && form.ownerUserId === userId)
   const isRespondent = (conv.respondentUserId && conv.respondentUserId === userId) || (conv.inviteJti && conv.inviteJti === inviteJti)
   if (!isRespondent)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
   // Owners should use the admin rewind endpoint
   if (isOwner)
-    throw new Error('Use owner rewind')
+    throw new Response('Forbidden', { status: 403 })
 
   // Enforce per-form limit
   const limit = getRespondentBackLimit(form)
   if (limit <= 0)
-    throw new Error('Back not allowed')
+    throw new Response('Back not allowed', { status: 403 })
 
   // Count how many answered turns are available to step back from
   const turns = await db
@@ -539,15 +539,15 @@ export const respondentRewind = action(async (raw: { conversationId: string }) =
   // Determine how many "back" operations have been already used by looking for reopened answers in clientMetaJson
   const used = getRespondentBackUsedCount(conv.clientMetaJson)
   if (used >= limit)
-    throw new Error('Back limit reached')
+    throw new Response('Back limit reached', { status: 403 })
 
   // If there's an active turn, delete it and reopen previous answered; else reopen the last answered
   if (active) {
     if (active.index <= 0)
-      throw new Error('No previous question')
+      throw new Response('No previous question', { status: 400 })
     const prev = turns.find(t => t.index === active.index - 1)
     if (!prev)
-      throw new Error('Previous question not found')
+      throw new Response('Previous question not found', { status: 404 })
 
     const prevAnswerValue = prev?.answerJson?.value
 
@@ -568,7 +568,7 @@ export const respondentRewind = action(async (raw: { conversationId: string }) =
   }
 
   if (answered.length === 0)
-    throw new Error('No questions to rewind')
+    throw new Response('No questions to rewind', { status: 400 })
 
   const last = answered[answered.length - 1]
   const lastAnswerValue = last?.answerJson?.value
@@ -599,12 +599,12 @@ export const resetConversation = action(async (raw: { conversationId: string }) 
   // Load conversation and form to check ownership
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   // Delete all turns for this conversation
   await db.delete(Turns).where(eq(Turns.conversationId, conversationId))
@@ -642,9 +642,9 @@ export const deleteConversation = action(async (raw: { conversationId: string })
     return { ok: true }
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   await db.delete(Conversations).where(eq(Conversations.id, conversationId))
 
@@ -663,10 +663,10 @@ async function ensureFirstTurn(conversationId: string, formId: string) {
 
   const [form] = await db.select().from(Forms).where(eq(Forms.id, formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   const seed = form.seedQuestionJson
   if (!seed)
-    throw new Error('Missing seed question')
+    throw new Response('Missing seed question', { status: 400 })
 
   await db.insert(Turns).values({
     conversationId,
@@ -754,16 +754,16 @@ export const listFormConversations = query(async (raw: { formId: string, status?
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const input = safeParseOrThrow(listFormConversationsSchema, raw, 'conv:listByForm')
 
   // Ownership check
   const [form] = await db.select().from(Forms).where(eq(Forms.id, input.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   const page = Math.max(1, input.page ?? 1)
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 25))
@@ -834,7 +834,7 @@ export const listOwnerConversations = query(async (raw?: { status?: 'active' | '
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const page = Math.max(1, Number(raw?.page ?? 1))
   const pageSize = Math.min(100, Math.max(1, Number(raw?.pageSize ?? 25)))
@@ -920,18 +920,18 @@ export const getConversationTranscript = query(async (raw: { conversationId: str
   const session = await event?.locals.getSession()
   const userId = session?.user?.id
   if (!userId)
-    throw new Error('Unauthorized')
+    throw new Response('Unauthorized', { status: 401 })
 
   const { conversationId } = safeParseOrThrow(z.object({ conversationId: idSchema }), raw, 'conv:getTranscript')
 
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   const turns = await db
     .select()
@@ -974,12 +974,12 @@ export const generateConversationSummary = action(async (raw: { conversationId: 
   // Load conversation and form, ensure ownership
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   if (form.ownerUserId !== userId)
-    throw new Error('Forbidden')
+    throw new Response('Forbidden', { status: 403 })
 
   await generateAndSaveConversationSummary(conversationId)
   const [summary] = await db
@@ -993,10 +993,10 @@ export const generateConversationSummary = action(async (raw: { conversationId: 
 async function generateAndSaveConversationSummary(conversationId: string) {
   const [conv] = await db.select().from(Conversations).where(eq(Conversations.id, conversationId))
   if (!conv)
-    throw new Error('Conversation not found')
+    throw new Response('Conversation not found', { status: 404 })
   const [form] = await db.select().from(Forms).where(eq(Forms.id, conv.formId))
   if (!form)
-    throw new Error('Form not found')
+    throw new Response('Form not found', { status: 404 })
   const priorTurns = await db
     .select()
     .from(Turns)
@@ -1007,7 +1007,7 @@ async function generateAndSaveConversationSummary(conversationId: string) {
   const modelId = form.aiConfigJson?.modelId as string | undefined
   const prompt = form.aiConfigJson?.prompt as string | undefined
   if (!provider || !modelId || !prompt)
-    throw new Error('AI not configured for this form')
+    throw new Response('AI not configured for this form', { status: 400 })
   await assertProviderAllowedForUser(provider, form.ownerUserId)
 
   const history = priorTurns.map((t: any) => ({ index: t.index, question: t.questionJson ? { label: t.questionJson.label } : undefined, answer: t.answerJson ? t.answerJson.value : undefined }))
