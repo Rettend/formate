@@ -47,6 +47,7 @@ export interface ModelConfigObject {
  */
 export const models: Record<Provider, ModelConfigObject[]> = {
   formate: [
+    { value: 'gpt-5.1', alias: 'GPT-5.1', iq: 5, speed: 3 },
     // OpenAI GPT-5 (high): AAII 68
     { value: 'gpt-5', alias: 'GPT-5', iq: 5, speed: 3 },
     // OpenAI GPT-5 mini (medium): AAII 64
